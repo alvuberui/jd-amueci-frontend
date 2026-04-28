@@ -9,14 +9,22 @@ type AuthContextValue = {
   token: string | null;
   user: AuthResponse | null;
   login: (payload: { username: string; password: string }) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   ready: boolean;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const TOKEN_KEY = "amueci-token";
-const USER_KEY = "amueci-user";
+function isBoardMember(user: AuthResponse | null) {
+  return user?.roles.includes("DIRECTIVA") ?? false;
+}
+
+function getHomePath(user: AuthResponse | null) {
+  if (!user) return "/login";
+  if (user.roles.includes("DIRECTIVA")) return "/dashboard";
+  if (user.roles.includes("DIRECCION_ESCUELA")) return "/escuela";
+  return "/mi-agenda";
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
@@ -25,11 +33,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    const storedToken = window.localStorage.getItem(TOKEN_KEY);
-    const storedUser = window.localStorage.getItem(USER_KEY);
-    setToken(storedToken);
-    setUser(storedUser ? JSON.parse(storedUser) as AuthResponse : null);
-    setReady(true);
+    apiRequest<AuthResponse>("/api/auth/me")
+      .then((response) => {
+        setToken("session");
+        setUser(response);
+      })
+      .catch(() => {
+        setToken(null);
+        setUser(null);
+      })
+      .finally(() => setReady(true));
   }, []);
 
   const value = useMemo<AuthContextValue>(() => ({
@@ -41,18 +54,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      window.localStorage.setItem(TOKEN_KEY, response.token ?? "");
-      window.localStorage.setItem(USER_KEY, JSON.stringify(response));
-      setToken(response.token);
+      setToken("session");
       setUser(response);
-      router.push("/dashboard");
+      router.push(getHomePath(response));
     },
-    logout() {
-      window.localStorage.removeItem(TOKEN_KEY);
-      window.localStorage.removeItem(USER_KEY);
+    async logout() {
+      try {
+        await apiRequest("/api/auth/logout", { method: "POST" });
+      } catch {
+        // Si la sesión ya ha sido invalidada en backend, igualmente cerramos la sesión en cliente.
+      }
       setToken(null);
       setUser(null);
-      router.push("/");
+      router.push("/login");
     },
   }), [ready, router, token, user]);
 

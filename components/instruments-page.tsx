@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
-import { Button, ConfirmButton, DataTable, EmptyState, Field, Input, Message, Page, PageHeader, SearchBox, SectionCard, Select, StatusBadge, Textarea, useSearch } from "@/components/ui";
+import { useFeedback } from "@/components/feedback-provider";
+import { Button, ConfirmButton, DataTable, EmptyState, Field, Input, LoadingState, Message, Page, PageHeader, SearchBox, SectionCard, Select, StatusBadge, Textarea, TransitionLink, useSearch } from "@/components/ui";
 import { apiRequest, HttpError } from "@/lib/api";
 import { formatCurrency, formatDate, formatDateTime, labelize } from "@/lib/format";
 import type { Instrument, InstrumentStatus } from "@/lib/types";
@@ -26,13 +26,16 @@ const initialForm = {
 
 export function InstrumentsPage() {
   const { token } = useAuth();
+  const { notify } = useFeedback();
   const [items, setItems] = useState<Instrument[]>([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   async function load() {
     if (!token) return;
@@ -41,8 +44,15 @@ export function InstrumentsPage() {
   }
 
   useEffect(() => {
-    load().catch((err) => setError(err instanceof HttpError ? err.message : "No se pudo cargar"));
-  }, [token]);
+    setLoading(true);
+    load()
+      .catch((err) => {
+        const message = err instanceof HttpError ? err.message : "No se pudo cargar";
+        setError(message);
+        notify({ title: "No se pudieron cargar los instrumentos", description: message, tone: "error" });
+      })
+      .finally(() => setLoading(false));
+  }, [notify, token]);
 
   const { query, setQuery, filtered } = useSearch(items, (item) => [item.name, item.family, item.brand ?? "", item.model ?? "", item.status]);
 
@@ -50,6 +60,7 @@ export function InstrumentsPage() {
     event.preventDefault();
     if (!token) return;
     try {
+      setSubmitting(true);
       const payload = {
         ...form,
         purchaseDate: form.purchaseDate || null,
@@ -58,18 +69,22 @@ export function InstrumentsPage() {
       };
       if (editingId) {
         await apiRequest(`/api/instrumentos/${editingId}`, { method: "PUT", body: JSON.stringify(payload) }, token);
-        setMessage("Instrumento actualizado");
+        notify({ title: "Instrumento actualizado", tone: "success" });
       } else {
         await apiRequest("/api/instrumentos", { method: "POST", body: JSON.stringify(payload) }, token);
-        setMessage("Instrumento creado");
+        notify({ title: "Instrumento creado", tone: "success" });
       }
       setForm(initialForm);
       setEditingId(null);
       setFieldErrors({});
       await load();
     } catch (err) {
-      setError(err instanceof HttpError ? err.message : "No se pudo guardar");
+      const message = err instanceof HttpError ? err.message : "No se pudo guardar";
+      setError(message);
       setFieldErrors(err instanceof HttpError ? (err.fieldErrors ?? {}) : {});
+      notify({ title: "No se pudo guardar el instrumento", description: message, tone: "error" });
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -81,19 +96,24 @@ export function InstrumentsPage() {
       setUploadingPhoto(true);
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"}/api/instrumentos/upload-photo`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: "include",
         body: formData,
       });
-      const payload = await response.json();
+      const text = await response.text();
+      const payload = text.trim() ? JSON.parse(text) as { message?: string; photoUrl?: string } : null;
       if (!response.ok) {
         throw new Error(payload?.message ?? "No se pudo subir la imagen");
       }
-      setForm((current) => ({ ...current, photoUrl: payload.photoUrl }));
-      setMessage("Imagen subida correctamente");
+      if (!payload?.photoUrl) {
+        throw new Error("El servidor no devolvio la ruta de la imagen");
+      }
+      const photoUrl = payload.photoUrl;
+      setForm((current) => ({ ...current, photoUrl }));
+      notify({ title: "Imagen subida correctamente", tone: "success" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo subir la imagen");
+      const message = err instanceof Error ? err.message : "No se pudo subir la imagen";
+      setError(message);
+      notify({ title: "No se pudo subir la imagen", description: message, tone: "error" });
     } finally {
       setUploadingPhoto(false);
     }
@@ -102,11 +122,16 @@ export function InstrumentsPage() {
   async function handleDelete(id: number) {
     if (!token) return;
     try {
+      setDeletingId(id);
       await apiRequest(`/api/instrumentos/${id}`, { method: "DELETE" }, token);
-      setMessage("Instrumento eliminado");
+      notify({ title: "Instrumento eliminado", tone: "success" });
       await load();
     } catch (err) {
-      setError(err instanceof HttpError ? err.message : "No se pudo eliminar");
+      const message = err instanceof HttpError ? err.message : "No se pudo eliminar";
+      setError(message);
+      notify({ title: "No se pudo eliminar el instrumento", description: message, tone: "error" });
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -138,10 +163,9 @@ export function InstrumentsPage() {
               </Field>
             </div>
             <Field label="Observaciones" optional error={fieldErrors.notes}><Textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></Field>
-            <Message text={message} tone="success" />
             <Message text={error} />
-            <div className="flex flex-wrap gap-3">
-              <Button type="submit">{editingId ? "Guardar cambios" : "Crear instrumento"}</Button>
+            <div className={`grid gap-3 ${editingId ? "sm:grid-cols-2" : "grid-cols-1"}`}>
+              <Button type="submit" loading={submitting}>{editingId ? "Guardar cambios" : "Crear instrumento"}</Button>
               {editingId ? <Button variant="ghost" type="button" onClick={() => { setEditingId(null); setForm(initialForm); }}>Cancelar</Button> : null}
             </div>
           </form>
@@ -149,7 +173,7 @@ export function InstrumentsPage() {
 
         <SectionCard title="Catálogo instrumental" description="Consulta rápida del parque instrumental y acceso al histórico por ficha.">
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar por nombre, familia o marca" />
-          {filtered.length === 0 ? <EmptyState text="No hay instrumentos registrados todavía." /> : (
+          {loading ? <LoadingState compact title="Cargando instrumentos" description="Preparando el catálogo musical." /> : filtered.length === 0 ? <EmptyState text="No hay instrumentos registrados todavía." /> : (
             <DataTable headers={["Nombre", "Familia", "Estado", "Compra", "Valor actual", "Acciones"]}>
               {filtered.map((item) => (
                 <tr key={item.id} className="text-slate-200">
@@ -161,9 +185,9 @@ export function InstrumentsPage() {
                   <td className="px-4 py-4"><StatusBadge value={item.status} /></td>
                   <td className="px-4 py-4 text-slate-400">{formatDate(item.purchaseDate)}</td>
                   <td className="px-4 py-4 text-slate-400">{formatCurrency(item.currentPrice)}</td>
-                  <td className="px-4 py-4">
-                    <div className="flex flex-wrap gap-2">
-                      <Link className="inline-flex rounded-2xl bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15" href={`/instrumentos/${item.id}`}>Detalle</Link>
+                  <td className="w-[220px] px-4 py-4">
+                    <div className="grid min-w-[180px] gap-2">
+                      <TransitionLink className="flex w-full min-h-10 items-center justify-center rounded-[16px] border border-white/10 bg-white/10 px-3.5 py-2 text-sm font-semibold text-white hover:bg-white/15" href={`/instrumentos/${item.id}`}>Detalle</TransitionLink>
                       <Button
                         variant="ghost"
                         onClick={() => {
@@ -185,7 +209,7 @@ export function InstrumentsPage() {
                       >
                         Editar
                       </Button>
-                      <ConfirmButton label="Eliminar" onConfirm={() => handleDelete(item.id)} />
+                      <ConfirmButton label="Eliminar" loading={deletingId === item.id} onConfirm={() => handleDelete(item.id)} />
                     </div>
                   </td>
                 </tr>

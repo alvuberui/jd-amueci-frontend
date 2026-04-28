@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { ArrowRight, ChartNoAxesCombined, Music4, Shirt, Waves, Wrench } from "lucide-react";
-import { Button, Page, PageHeader, Panel } from "@/components/ui";
+import { Button, LoadingState, Page, PageHeader, Panel, TransitionLink } from "@/components/ui";
 import { useAuth } from "@/components/auth-provider";
+import { useFeedback } from "@/components/feedback-provider";
 import { apiRequest, HttpError } from "@/lib/api";
 import type { Summary } from "@/lib/types";
 
@@ -21,21 +21,29 @@ export function DashboardPage() {
   const { token } = useAuth();
   const [summary, setSummary] = useState<Summary>(emptySummary);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const { notify } = useFeedback();
 
   useEffect(() => {
     if (!token) return;
+    setLoading(true);
     apiRequest<Summary>("/api/dashboard/summary", {}, token)
       .then(setSummary)
-      .catch((err) => setError(err instanceof HttpError ? err.message : "No se pudo cargar el dashboard"));
-  }, [token]);
+      .catch((err) => {
+        const message = err instanceof HttpError ? err.message : "No se pudo cargar el dashboard";
+        setError(message);
+        notify({ title: "No se pudo cargar el dashboard", description: message, tone: "error" });
+      })
+      .finally(() => setLoading(false));
+  }, [notify, token]);
 
   const cards = [
-    { label: "Vestimentas", value: summary.totalVestimentas, accent: "from-fuchsia-500/20 to-brand-500/5" },
-    { label: "Instrumentos", value: summary.totalInstrumentos, accent: "from-sky-500/20 to-slate-900/10" },
-    { label: "Vestimentas prestadas", value: summary.vestimentasPrestadas, accent: "from-amber-500/20 to-slate-900/10" },
-    { label: "Instrumentos prestados", value: summary.instrumentosPrestados, accent: "from-emerald-500/20 to-slate-900/10" },
-    { label: "Instrumentos en reparacion", value: summary.instrumentosEnReparacion, accent: "from-rose-500/20 to-slate-900/10" },
-    { label: "Vestimentas en lavado", value: summary.vestimentasEnLavado, accent: "from-cyan-500/20 to-slate-900/10" },
+    { label: "Vestimentas", value: summary.totalVestimentas, accent: "from-brand-500/14 to-transparent" },
+    { label: "Instrumentos", value: summary.totalInstrumentos, accent: "from-sky-500/14 to-transparent" },
+    { label: "Vestimentas prestadas", value: summary.vestimentasPrestadas, accent: "from-amber-500/14 to-transparent" },
+    { label: "Instrumentos prestados", value: summary.instrumentosPrestados, accent: "from-emerald-500/14 to-transparent" },
+    { label: "Instrumentos en reparación", value: summary.instrumentosEnReparacion, accent: "from-rose-500/14 to-transparent" },
+    { label: "Vestimentas en lavado", value: summary.vestimentasEnLavado, accent: "from-cyan-500/14 to-transparent" },
   ];
 
   const quickLinks = [
@@ -49,48 +57,50 @@ export function DashboardPage() {
     <Page>
       <PageHeader
         title="Dashboard"
-        subtitle="Visión ejecutiva del estado del material y acceso directo a las áreas clave de operación."
+        subtitle="Resumen general del material y accesos directos a las tareas más frecuentes."
         actions={
-          <Button className="gap-2">
+          <Button variant="secondary" className="w-full sm:w-auto gap-2">
             <ChartNoAxesCombined className="size-4" />
-            Resumen operativo
+            Estado general
           </Button>
         }
       />
 
       {error ? <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">{error}</div> : null}
 
+      {loading ? <LoadingState title="Cargando dashboard" description="Preparando los indicadores principales." /> : (
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {cards.map((card) => (
-          <article key={card.label} className={`overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-br ${card.accent} p-6 shadow-panel`}>
-            <div className="text-sm text-slate-300">{card.label}</div>
-            <div className="mt-6 flex items-end justify-between">
+          <article key={card.label} className={`overflow-hidden rounded-[24px] border border-white/10 bg-gradient-to-br ${card.accent} p-6 shadow-panel`}>
+            <div className="text-sm text-slate-400">{card.label}</div>
+            <div className="mt-5 flex items-end justify-between">
               <strong className="text-4xl font-semibold text-white">{card.value}</strong>
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.2em] text-slate-400">Live</span>
+              <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-medium text-slate-400">Actualizado</span>
             </div>
           </article>
         ))}
       </section>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <Panel className="space-y-5">
           <div>
-            <h2 className="text-xl font-semibold text-white">Atajos operativos</h2>
-            <p className="mt-1 text-sm text-slate-400">Entradas rápidas para la operativa más frecuente del día a día.</p>
+            <h2 className="text-xl font-semibold text-white">Accesos directos</h2>
+            <p className="mt-1 text-sm text-slate-400">Enlaces rápidos a las áreas que más se usan en la operativa diaria.</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             {quickLinks.map((link) => {
               const Icon = link.icon;
               return (
-                <Link key={link.href} href={link.href} className="group rounded-[26px] border border-white/10 bg-white/[0.03] p-5 transition hover:border-brand-400/50 hover:bg-brand-500/10">
+                <TransitionLink key={link.href} href={link.href} className="group rounded-[22px] border border-white/10 bg-white/[0.03] p-5 transition hover:border-white/15 hover:bg-white/[0.05]">
                   <div className="flex items-center justify-between">
-                    <div className="flex size-12 items-center justify-center rounded-2xl bg-white/5 text-brand-200">
+                    <div className="flex size-12 items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.04] text-brand-200">
                       <Icon className="size-5" />
                     </div>
                     <ArrowRight className="size-4 text-slate-500 transition group-hover:translate-x-1 group-hover:text-white" />
                   </div>
                   <p className="mt-4 text-base font-medium text-white">{link.label}</p>
-                </Link>
+                </TransitionLink>
               );
             })}
           </div>
@@ -98,8 +108,8 @@ export function DashboardPage() {
 
         <Panel className="space-y-5">
           <div>
-            <h2 className="text-xl font-semibold text-white">Estado general</h2>
-            <p className="mt-1 text-sm text-slate-400">La primera versión ya concentra inventario, cesiones, lavados y reparaciones.</p>
+            <h2 className="text-xl font-semibold text-white">Situación actual</h2>
+            <p className="mt-1 text-sm text-slate-400">Una lectura rápida de disponibilidad, actividad e incidencias.</p>
           </div>
           <div className="space-y-4">
             {[

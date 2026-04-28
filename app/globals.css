@@ -6,13 +6,25 @@
   color-scheme: dark;
 }
 
+html {
+  background: #09111d;
+}
+
 body {
   @apply bg-slate-950 text-slate-100 antialiased;
-  font-family: Aptos, "Segoe UI Variable", "Segoe UI", sans-serif;
+  font-family: "Segoe UI Variable Display", "Segoe UI Variable", Aptos, "Segoe UI", sans-serif;
+  letter-spacing: -0.01em;
 }
 
 a {
   @apply no-underline;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
 }
 
 * {

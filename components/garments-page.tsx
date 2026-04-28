@@ -1,14 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
-import { Button, ConfirmButton, DataTable, EmptyState, Field, Input, Message, Page, PageHeader, SearchBox, SectionCard, Select, StatusBadge, Textarea, useSearch } from "@/components/ui";
+import { useFeedback } from "@/components/feedback-provider";
+import { Button, ConfirmButton, DataTable, EmptyState, Field, Input, LoadingState, Message, Page, PageHeader, SearchBox, SectionCard, Select, StatusBadge, Textarea, TransitionLink, useSearch } from "@/components/ui";
 import { apiRequest, HttpError } from "@/lib/api";
 import { formatDate, formatDateTime, labelize } from "@/lib/format";
 import type { Garment, GarmentStatus, GarmentType } from "@/lib/types";
 
-const garmentTypes: GarmentType[] = ["CHAQUETA", "PANTALON", "CAMISA", "PAR_DE_HOMBRERAS", "CUELLOS", "PAR_DE_MANGAS"];
+const garmentTypes: GarmentType[] = ["CHAQUETA", "PANTALON", "CAMISA", "BOLSO_ARREOS", "PAR_DE_HOMBRERAS", "CUELLOS", "PAR_DE_MANGAS"];
 const garmentStatuses: GarmentStatus[] = ["DISPONIBLE", "PRESTADA", "EN_LAVADO", "FUERA_DE_USO"];
 
 const initialForm = {
@@ -21,12 +21,15 @@ const initialForm = {
 
 export function GarmentsPage() {
   const { token } = useAuth();
+  const { notify } = useFeedback();
   const [items, setItems] = useState<Garment[]>([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   async function load() {
     if (!token) return;
@@ -35,8 +38,15 @@ export function GarmentsPage() {
   }
 
   useEffect(() => {
-    load().catch((err) => setError(err instanceof HttpError ? err.message : "No se pudo cargar"));
-  }, [token]);
+    setLoading(true);
+    load()
+      .catch((err) => {
+        const message = err instanceof HttpError ? err.message : "No se pudo cargar";
+        setError(message);
+        notify({ title: "No se pudieron cargar las vestimentas", description: message, tone: "error" });
+      })
+      .finally(() => setLoading(false));
+  }, [notify, token]);
 
   const { query, setQuery, filtered } = useSearch(items, (item) => [item.identifier, item.type, item.size, item.status, item.notes ?? ""]);
 
@@ -44,37 +54,48 @@ export function GarmentsPage() {
     event.preventDefault();
     if (!token) return;
     try {
+      setSubmitting(true);
       setError(null);
+      const currentIdentifier = editingId ? items.find((item) => item.id === editingId)?.identifier ?? null : null;
       const payload = {
         ...form,
-        identifier: null,
+        identifier: currentIdentifier,
         purchaseDate: form.purchaseDate || null,
       };
       if (editingId) {
         await apiRequest(`/api/vestimentas/${editingId}`, { method: "PUT", body: JSON.stringify(payload) }, token);
-        setMessage("Vestimenta actualizada");
+        notify({ title: "Vestimenta actualizada", tone: "success" });
       } else {
         await apiRequest("/api/vestimentas", { method: "POST", body: JSON.stringify(payload) }, token);
-        setMessage("Vestimenta creada");
+        notify({ title: "Vestimenta creada", tone: "success" });
       }
       setForm(initialForm);
       setEditingId(null);
       setFieldErrors({});
       await load();
     } catch (err) {
-      setError(err instanceof HttpError ? err.message : "No se pudo guardar");
+      const message = err instanceof HttpError ? err.message : "No se pudo guardar";
+      setError(message);
       setFieldErrors(err instanceof HttpError ? (err.fieldErrors ?? {}) : {});
+      notify({ title: "No se pudo guardar la vestimenta", description: message, tone: "error" });
+    } finally {
+      setSubmitting(false);
     }
   }
 
   async function handleDelete(id: number) {
     if (!token) return;
     try {
+      setDeletingId(id);
       await apiRequest(`/api/vestimentas/${id}`, { method: "DELETE" }, token);
-      setMessage("Vestimenta eliminada");
+      notify({ title: "Vestimenta eliminada", tone: "success" });
       await load();
     } catch (err) {
-      setError(err instanceof HttpError ? err.message : "No se pudo eliminar");
+      const message = err instanceof HttpError ? err.message : "No se pudo eliminar";
+      setError(message);
+      notify({ title: "No se pudo eliminar la vestimenta", description: message, tone: "error" });
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -108,10 +129,9 @@ export function GarmentsPage() {
             <Field label="Observaciones" optional error={fieldErrors.notes}>
               <Textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
             </Field>
-            <Message text={message} tone="success" />
             <Message text={error} />
-            <div className="flex flex-wrap gap-3">
-              <Button type="submit">{editingId ? "Guardar cambios" : "Crear vestimenta"}</Button>
+            <div className={`grid gap-3 ${editingId ? "sm:grid-cols-2" : "grid-cols-1"}`}>
+              <Button type="submit" loading={submitting}>{editingId ? "Guardar cambios" : "Crear vestimenta"}</Button>
               {editingId ? <Button variant="ghost" type="button" onClick={() => { setEditingId(null); setForm(initialForm); }}>Cancelar</Button> : null}
             </div>
           </form>
@@ -121,7 +141,9 @@ export function GarmentsPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <SearchBox value={query} onChange={setQuery} placeholder="Buscar por identificador, talla o estado" />
           </div>
-          {filtered.length === 0 ? (
+          {loading ? (
+            <LoadingState compact title="Cargando vestimentas" description="Consultando el inventario textil." />
+          ) : filtered.length === 0 ? (
             <EmptyState text="No hay vestimentas registradas todavía." />
           ) : (
             <DataTable headers={["Identificador", "Tipo", "Estado", "Talla", "Compra", "Actualizado", "Acciones"]}>
@@ -133,13 +155,13 @@ export function GarmentsPage() {
                   <td className="px-4 py-4">{item.size}</td>
                   <td className="px-4 py-4 text-slate-400">{formatDate(item.purchaseDate)}</td>
                   <td className="px-4 py-4 text-slate-400">{formatDateTime(item.updatedAt)}</td>
-                  <td className="px-4 py-4">
-                    <div className="flex flex-wrap gap-2">
-                      <Link className="inline-flex rounded-2xl bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15" href={`/vestimentas/${item.id}`}>Detalle</Link>
+                  <td className="w-[220px] px-4 py-4">
+                    <div className="grid min-w-[180px] gap-2">
+                      <TransitionLink className="flex w-full min-h-10 items-center justify-center rounded-[16px] border border-white/10 bg-white/10 px-3.5 py-2 text-sm font-semibold text-white hover:bg-white/15" href={`/vestimentas/${item.id}`}>Detalle</TransitionLink>
                       <Button variant="ghost" onClick={() => { setEditingId(item.id); setForm({ type: item.type, size: item.size, status: item.status, purchaseDate: item.purchaseDate ?? "", notes: item.notes ?? "" }); }}>
                         Editar
                       </Button>
-                      <ConfirmButton label="Eliminar" onConfirm={() => handleDelete(item.id)} />
+                      <ConfirmButton label="Eliminar" loading={deletingId === item.id} onConfirm={() => handleDelete(item.id)} />
                     </div>
                   </td>
                 </tr>

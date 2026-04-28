@@ -1,60 +1,88 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
-import { Button, DataTable, EmptyState, Field, Input, Message, Page, PageHeader, SectionCard, StatusBadge, Textarea } from "@/components/ui";
+import { useFeedback } from "@/components/feedback-provider";
+import { Button, DataTable, EmptyState, Field, Input, LoadingState, Message, Page, PageHeader, SectionCard, Select, StatusBadge, Textarea, TransitionLink } from "@/components/ui";
 import { apiRequest, HttpError } from "@/lib/api";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
-import type { Instrument, InstrumentLoan, InstrumentRepair } from "@/lib/types";
+import type { Instrument, InstrumentLoan, InstrumentRepair, Member } from "@/lib/types";
 
-const loanInitial = { personName: "", responsiblePersonName: "", startDate: "", endDate: "", notes: "" };
+const loanInitial = { personName: "", memberId: "", responsibleMemberId: "", responsiblePersonName: "", startDate: "", endDate: "", notes: "" };
 const repairInitial = { startDate: "", endDate: "", description: "", cost: "", provider: "", notes: "" };
 
 export function InstrumentDetailPage({ id }: { id: number }) {
   const { token } = useAuth();
+  const { notify } = useFeedback();
   const [instrument, setInstrument] = useState<Instrument | null>(null);
   const [loans, setLoans] = useState<InstrumentLoan[]>([]);
   const [repairs, setRepairs] = useState<InstrumentRepair[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const boardMembers = members.filter((member) => member.boardMember);
   const [loanForm, setLoanForm] = useState(loanInitial);
   const [repairForm, setRepairForm] = useState(repairInitial);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [loanFieldErrors, setLoanFieldErrors] = useState<Record<string, string>>({});
   const [repairFieldErrors, setRepairFieldErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [submittingLoan, setSubmittingLoan] = useState(false);
+  const [submittingRepair, setSubmittingRepair] = useState(false);
+  const [finalizingLoanId, setFinalizingLoanId] = useState<number | null>(null);
 
   async function load() {
     if (!token) return;
-    const [instrumentData, loanData, repairData] = await Promise.all([
+    const [instrumentData, loanData, repairData, memberData] = await Promise.all([
       apiRequest<Instrument>(`/api/instrumentos/${id}`, {}, token),
       apiRequest<InstrumentLoan[]>(`/api/instrumentos/${id}/prestamos`, {}, token),
       apiRequest<InstrumentRepair[]>(`/api/instrumentos/${id}/reparaciones`, {}, token),
+      apiRequest<Member[]>("/api/socios", {}, token),
     ]);
     setInstrument(instrumentData);
     setLoans(loanData);
     setRepairs(repairData);
+    setMembers(memberData);
   }
 
   useEffect(() => {
-    load().catch((err) => setError(err instanceof HttpError ? err.message : "No se pudo cargar el detalle"));
-  }, [id, token]);
+    setLoading(true);
+    load()
+      .catch((err) => {
+        const message = err instanceof HttpError ? err.message : "No se pudo cargar el detalle";
+        setError(message);
+        notify({ title: "No se pudo cargar la ficha", description: message, tone: "error" });
+      })
+      .finally(() => setLoading(false));
+  }, [id, notify, token]);
 
   async function createLoan(event: FormEvent) {
     event.preventDefault();
     if (!token) return;
     try {
+      setSubmittingLoan(true);
+      const selectedMember = members.find((item) => String(item.id) === loanForm.memberId);
       await apiRequest(`/api/instrumentos/${id}/prestamos`, {
         method: "POST",
-        body: JSON.stringify({ ...loanForm, endDate: loanForm.endDate || null }),
+        body: JSON.stringify({
+          ...loanForm,
+          memberId: loanForm.memberId ? Number(loanForm.memberId) : null,
+          responsibleMemberId: loanForm.responsibleMemberId ? Number(loanForm.responsibleMemberId) : null,
+          personName: selectedMember?.fullName ?? loanForm.personName,
+          responsiblePersonName: null,
+          endDate: loanForm.endDate || null,
+        }),
       }, token);
       setLoanForm(loanInitial);
       setLoanFieldErrors({});
-      setMessage("Prestamo registrado");
+      notify({ title: "Préstamo registrado", tone: "success" });
       await load();
     } catch (err) {
-      setError(err instanceof HttpError ? err.message : "No se pudo crear el prestamo");
+      const message = err instanceof HttpError ? err.message : "No se pudo crear el prestamo";
+      setError(message);
       setLoanFieldErrors(err instanceof HttpError ? (err.fieldErrors ?? {}) : {});
+      notify({ title: "No se pudo registrar el préstamo", description: message, tone: "error" });
+    } finally {
+      setSubmittingLoan(false);
     }
   }
 
@@ -62,37 +90,50 @@ export function InstrumentDetailPage({ id }: { id: number }) {
     event.preventDefault();
     if (!token) return;
     try {
+      setSubmittingRepair(true);
       await apiRequest(`/api/instrumentos/${id}/reparaciones`, {
         method: "POST",
         body: JSON.stringify({ ...repairForm, endDate: repairForm.endDate || null, cost: repairForm.cost ? Number(repairForm.cost) : null }),
       }, token);
       setRepairForm(repairInitial);
       setRepairFieldErrors({});
-      setMessage("Reparacion registrada");
+      notify({ title: "Reparación registrada", tone: "success" });
       await load();
     } catch (err) {
-      setError(err instanceof HttpError ? err.message : "No se pudo crear la reparacion");
+      const message = err instanceof HttpError ? err.message : "No se pudo crear la reparacion";
+      setError(message);
       setRepairFieldErrors(err instanceof HttpError ? (err.fieldErrors ?? {}) : {});
+      notify({ title: "No se pudo registrar la reparación", description: message, tone: "error" });
+    } finally {
+      setSubmittingRepair(false);
     }
   }
 
   async function finalizeLoan(loanId: number) {
     if (!token) return;
-    await apiRequest(`/api/instrumentos/${id}/prestamos/${loanId}/finalizar`, { method: "POST" }, token);
-    setMessage("Prestamo finalizado");
-    await load();
+    try {
+      setFinalizingLoanId(loanId);
+      await apiRequest(`/api/instrumentos/${id}/prestamos/${loanId}/finalizar`, { method: "POST" }, token);
+      notify({ title: "Préstamo finalizado", tone: "success" });
+      await load();
+    } catch (err) {
+      const message = err instanceof HttpError ? err.message : "No se pudo finalizar el prestamo";
+      setError(message);
+      notify({ title: "No se pudo finalizar el préstamo", description: message, tone: "error" });
+    } finally {
+      setFinalizingLoanId(null);
+    }
   }
 
-  if (!instrument) return <div className="px-6 py-8 text-sm text-slate-400">Cargando...</div>;
+  if (loading || !instrument) return <div className="px-6 py-8"><LoadingState title="Cargando ficha de instrumento" description="Recuperando detalle, préstamos y reparaciones." /></div>;
 
   return (
     <Page>
       <PageHeader
         title={`Instrumento ${instrument.name}`}
         subtitle="Ficha tecnica, valor economico y ciclo operativo del instrumento."
-        actions={<Link className="inline-flex rounded-2xl border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5" href="/instrumentos">Volver</Link>}
+        actions={<TransitionLink className="inline-flex w-full min-h-11 items-center justify-center rounded-[18px] border border-white/10 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/5 sm:w-auto" href="/instrumentos">Volver</TransitionLink>}
       />
-      <Message text={message} tone="success" />
       <Message text={error} />
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
@@ -129,13 +170,32 @@ export function InstrumentDetailPage({ id }: { id: number }) {
         <SectionCard title="Nuevo prestamo">
           <form className="space-y-4" onSubmit={createLoan}>
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Persona" required error={loanFieldErrors.personName}><Input value={loanForm.personName} onChange={(event) => setLoanForm({ ...loanForm, personName: event.target.value })} /></Field>
-              <Field label="Responsable" optional error={loanFieldErrors.responsiblePersonName}><Input value={loanForm.responsiblePersonName} onChange={(event) => setLoanForm({ ...loanForm, responsiblePersonName: event.target.value })} /></Field>
+              <Field label="Socio" optional>
+                <Select value={loanForm.memberId} onChange={(event) => {
+                  const value = event.target.value;
+                  const selected = members.find((item) => String(item.id) === value);
+                  setLoanForm({
+                    ...loanForm,
+                    memberId: value,
+                    personName: selected?.fullName ?? loanForm.personName,
+                  });
+                }}>
+                  <option value="">Sin vincular a socio</option>
+                  {members.map((member) => <option key={member.id} value={member.id}>{member.fullName}</option>)}
+                </Select>
+              </Field>
+              <Field label="Persona" required error={loanFieldErrors.personName}><Input value={loanForm.personName} onChange={(event) => setLoanForm({ ...loanForm, personName: event.target.value, memberId: "" })} /></Field>
+              <Field label="Responsable" optional error={loanFieldErrors.responsibleMemberId ?? loanFieldErrors.responsiblePersonName}>
+                <Select value={loanForm.responsibleMemberId} onChange={(event) => setLoanForm({ ...loanForm, responsibleMemberId: event.target.value })}>
+                  <option value="">Sin asignar</option>
+                  {boardMembers.map((member) => <option key={member.id} value={member.id}>{member.fullName}</option>)}
+                </Select>
+              </Field>
               <Field label="Inicio" required error={loanFieldErrors.startDate}><Input type="date" value={loanForm.startDate} onChange={(event) => setLoanForm({ ...loanForm, startDate: event.target.value })} /></Field>
               <Field label="Fin" optional error={loanFieldErrors.endDate}><Input type="date" value={loanForm.endDate} onChange={(event) => setLoanForm({ ...loanForm, endDate: event.target.value })} /></Field>
             </div>
             <Field label="Observaciones" optional error={loanFieldErrors.notes}><Textarea value={loanForm.notes} onChange={(event) => setLoanForm({ ...loanForm, notes: event.target.value })} /></Field>
-            <Button type="submit">Crear prestamo</Button>
+            <Button type="submit" loading={submittingLoan}>Crear prestamo</Button>
           </form>
         </SectionCard>
       </div>
@@ -150,7 +210,7 @@ export function InstrumentDetailPage({ id }: { id: number }) {
                   <td className="px-4 py-4 text-slate-400">{formatDate(loan.startDate)}</td>
                   <td className="px-4 py-4 text-slate-400">{formatDate(loan.endDate)}</td>
                   <td className="px-4 py-4 text-slate-400">{loan.responsiblePersonName || "Sin dato"}</td>
-                  <td className="px-4 py-4">{!loan.endDate ? <Button variant="secondary" onClick={() => finalizeLoan(loan.id)}>Finalizar</Button> : null}</td>
+                  <td className="px-4 py-4">{!loan.endDate ? <Button variant="secondary" loading={finalizingLoanId === loan.id} onClick={() => finalizeLoan(loan.id)}>Finalizar</Button> : null}</td>
                 </tr>
               ))}
             </DataTable>
@@ -167,7 +227,7 @@ export function InstrumentDetailPage({ id }: { id: number }) {
               <Field label="Proveedor" optional error={repairFieldErrors.provider}><Input value={repairForm.provider} onChange={(event) => setRepairForm({ ...repairForm, provider: event.target.value })} /></Field>
             </div>
             <Field label="Observaciones" optional error={repairFieldErrors.notes}><Textarea value={repairForm.notes} onChange={(event) => setRepairForm({ ...repairForm, notes: event.target.value })} /></Field>
-            <Button type="submit">Crear reparacion</Button>
+            <Button type="submit" loading={submittingRepair}>Crear reparacion</Button>
           </form>
         </SectionCard>
       </div>

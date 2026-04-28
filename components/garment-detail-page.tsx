@@ -1,59 +1,88 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
-import { Button, DataTable, EmptyState, Field, Input, Message, Page, PageHeader, SectionCard, Select, StatusBadge, Textarea } from "@/components/ui";
+import { useFeedback } from "@/components/feedback-provider";
+import { Button, DataTable, EmptyState, Field, Input, LoadingState, Message, Page, PageHeader, SectionCard, Select, StatusBadge, Textarea, TransitionLink } from "@/components/ui";
 import { apiRequest, HttpError } from "@/lib/api";
 import { formatDate, formatDateTime, labelize } from "@/lib/format";
-import type { Garment, GarmentLoan, GarmentWash } from "@/lib/types";
+import type { Garment, GarmentLoan, GarmentWash, Member } from "@/lib/types";
 
-const loanInitial = { personName: "", responsiblePersonName: "", startDate: "", endDate: "", notes: "" };
+const loanInitial = { personName: "", memberId: "", responsibleMemberId: "", responsiblePersonName: "", startDate: "", endDate: "", notes: "" };
 const washInitial = { startDate: "", description: "", responsiblePersonName: "", inProgress: false, notes: "" };
 
 export function GarmentDetailPage({ id }: { id: number }) {
   const { token } = useAuth();
+  const { notify } = useFeedback();
   const [garment, setGarment] = useState<Garment | null>(null);
   const [loans, setLoans] = useState<GarmentLoan[]>([]);
   const [washes, setWashes] = useState<GarmentWash[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const boardMembers = members.filter((member) => member.boardMember);
   const [loanForm, setLoanForm] = useState(loanInitial);
   const [washForm, setWashForm] = useState(washInitial);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [loanFieldErrors, setLoanFieldErrors] = useState<Record<string, string>>({});
   const [washFieldErrors, setWashFieldErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [submittingLoan, setSubmittingLoan] = useState(false);
+  const [submittingWash, setSubmittingWash] = useState(false);
+  const [finalizingLoanId, setFinalizingLoanId] = useState<number | null>(null);
+  const [finalizingWashId, setFinalizingWashId] = useState<number | null>(null);
 
   async function load() {
     if (!token) return;
-    const [garmentData, loanData, washData] = await Promise.all([
+    const [garmentData, loanData, washData, memberData] = await Promise.all([
       apiRequest<Garment>(`/api/vestimentas/${id}`, {}, token),
       apiRequest<GarmentLoan[]>(`/api/vestimentas/${id}/prestamos`, {}, token),
       apiRequest<GarmentWash[]>(`/api/vestimentas/${id}/lavados`, {}, token),
+      apiRequest<Member[]>("/api/socios", {}, token),
     ]);
     setGarment(garmentData);
     setLoans(loanData);
     setWashes(washData);
+    setMembers(memberData);
   }
 
   useEffect(() => {
-    load().catch((err) => setError(err instanceof HttpError ? err.message : "No se pudo cargar el detalle"));
-  }, [id, token]);
+    setLoading(true);
+    load()
+      .catch((err) => {
+        const message = err instanceof HttpError ? err.message : "No se pudo cargar el detalle";
+        setError(message);
+        notify({ title: "No se pudo cargar la ficha", description: message, tone: "error" });
+      })
+      .finally(() => setLoading(false));
+  }, [id, notify, token]);
 
   async function createLoan(event: FormEvent) {
     event.preventDefault();
     if (!token) return;
     try {
+      setSubmittingLoan(true);
+      const selectedMember = members.find((item) => String(item.id) === loanForm.memberId);
       await apiRequest(`/api/vestimentas/${id}/prestamos`, {
         method: "POST",
-        body: JSON.stringify({ ...loanForm, endDate: loanForm.endDate || null }),
+        body: JSON.stringify({
+          ...loanForm,
+          memberId: loanForm.memberId ? Number(loanForm.memberId) : null,
+          responsibleMemberId: loanForm.responsibleMemberId ? Number(loanForm.responsibleMemberId) : null,
+          personName: selectedMember?.fullName ?? loanForm.personName,
+          responsiblePersonName: null,
+          endDate: loanForm.endDate || null,
+        }),
       }, token);
       setLoanForm(loanInitial);
       setLoanFieldErrors({});
-      setMessage("Prestamo registrado");
+      notify({ title: "Préstamo registrado", tone: "success" });
       await load();
     } catch (err) {
-      setError(err instanceof HttpError ? err.message : "No se pudo crear el prestamo");
+      const message = err instanceof HttpError ? err.message : "No se pudo crear el prestamo";
+      setError(message);
       setLoanFieldErrors(err instanceof HttpError ? (err.fieldErrors ?? {}) : {});
+      notify({ title: "No se pudo registrar el préstamo", description: message, tone: "error" });
+    } finally {
+      setSubmittingLoan(false);
     }
   }
 
@@ -61,44 +90,66 @@ export function GarmentDetailPage({ id }: { id: number }) {
     event.preventDefault();
     if (!token) return;
     try {
+      setSubmittingWash(true);
       await apiRequest(`/api/vestimentas/${id}/lavados`, {
         method: "POST",
         body: JSON.stringify({ ...washForm, startDate: washForm.startDate || null, endDate: null }),
       }, token);
       setWashForm(washInitial);
       setWashFieldErrors({});
-      setMessage("Lavado registrado");
+      notify({ title: "Lavado registrado", tone: "success" });
       await load();
     } catch (err) {
-      setError(err instanceof HttpError ? err.message : "No se pudo crear el lavado");
+      const message = err instanceof HttpError ? err.message : "No se pudo crear el lavado";
+      setError(message);
       setWashFieldErrors(err instanceof HttpError ? (err.fieldErrors ?? {}) : {});
+      notify({ title: "No se pudo registrar el lavado", description: message, tone: "error" });
+    } finally {
+      setSubmittingWash(false);
     }
   }
 
   async function finalizeLoan(loanId: number) {
     if (!token) return;
-    await apiRequest(`/api/vestimentas/${id}/prestamos/${loanId}/finalizar`, { method: "POST" }, token);
-    setMessage("Prestamo finalizado");
-    await load();
+    try {
+      setFinalizingLoanId(loanId);
+      await apiRequest(`/api/vestimentas/${id}/prestamos/${loanId}/finalizar`, { method: "POST" }, token);
+      notify({ title: "Préstamo finalizado", tone: "success" });
+      await load();
+    } catch (err) {
+      const message = err instanceof HttpError ? err.message : "No se pudo finalizar el prestamo";
+      setError(message);
+      notify({ title: "No se pudo finalizar el préstamo", description: message, tone: "error" });
+    } finally {
+      setFinalizingLoanId(null);
+    }
   }
 
   async function finalizeWash(washId: number) {
     if (!token) return;
-    await apiRequest(`/api/vestimentas/${id}/lavados/${washId}/finalizar`, { method: "POST" }, token);
-    setMessage("Lavado finalizado");
-    await load();
+    try {
+      setFinalizingWashId(washId);
+      await apiRequest(`/api/vestimentas/${id}/lavados/${washId}/finalizar`, { method: "POST" }, token);
+      notify({ title: "Lavado finalizado", tone: "success" });
+      await load();
+    } catch (err) {
+      const message = err instanceof HttpError ? err.message : "No se pudo finalizar el lavado";
+      setError(message);
+      notify({ title: "No se pudo finalizar el lavado", description: message, tone: "error" });
+    } finally {
+      setFinalizingWashId(null);
+    }
   }
 
-  if (!garment) return <div className="px-6 py-8 text-sm text-slate-400">Cargando...</div>;
+  if (loading || !garment) return <div className="px-6 py-8"><LoadingState title="Cargando ficha de vestimenta" description="Recuperando detalle, préstamos y lavados." /></div>;
 
   return (
     <Page>
       <PageHeader
         title={`Vestimenta ${garment.identifier}`}
         subtitle="Ficha completa, prestamos y ciclo de lavado en una sola vista."
-        actions={<Link className="inline-flex rounded-2xl border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5" href="/vestimentas">Volver</Link>}
+        actions={<TransitionLink className="inline-flex w-full min-h-11 items-center justify-center rounded-[18px] border border-white/10 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/5 sm:w-auto" href="/vestimentas">Volver</TransitionLink>}
       />
-      <Message text={message} tone="success" />
       <Message text={error} />
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
@@ -129,13 +180,32 @@ export function GarmentDetailPage({ id }: { id: number }) {
         <SectionCard title="Nuevo prestamo">
           <form className="space-y-4" onSubmit={createLoan}>
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Persona" required error={loanFieldErrors.personName}><Input value={loanForm.personName} onChange={(event) => setLoanForm({ ...loanForm, personName: event.target.value })} /></Field>
-              <Field label="Responsable" optional error={loanFieldErrors.responsiblePersonName}><Input value={loanForm.responsiblePersonName} onChange={(event) => setLoanForm({ ...loanForm, responsiblePersonName: event.target.value })} /></Field>
+              <Field label="Socio" optional>
+                <Select value={loanForm.memberId} onChange={(event) => {
+                  const value = event.target.value;
+                  const selected = members.find((item) => String(item.id) === value);
+                  setLoanForm({
+                    ...loanForm,
+                    memberId: value,
+                    personName: selected?.fullName ?? loanForm.personName,
+                  });
+                }}>
+                  <option value="">Sin vincular a socio</option>
+                  {members.map((member) => <option key={member.id} value={member.id}>{member.fullName}</option>)}
+                </Select>
+              </Field>
+              <Field label="Persona" required error={loanFieldErrors.personName}><Input value={loanForm.personName} onChange={(event) => setLoanForm({ ...loanForm, personName: event.target.value, memberId: "" })} /></Field>
+              <Field label="Responsable" optional error={loanFieldErrors.responsibleMemberId ?? loanFieldErrors.responsiblePersonName}>
+                <Select value={loanForm.responsibleMemberId} onChange={(event) => setLoanForm({ ...loanForm, responsibleMemberId: event.target.value })}>
+                  <option value="">Sin asignar</option>
+                  {boardMembers.map((member) => <option key={member.id} value={member.id}>{member.fullName}</option>)}
+                </Select>
+              </Field>
               <Field label="Inicio" required error={loanFieldErrors.startDate}><Input type="date" value={loanForm.startDate} onChange={(event) => setLoanForm({ ...loanForm, startDate: event.target.value })} /></Field>
               <Field label="Fin" optional error={loanFieldErrors.endDate}><Input type="date" value={loanForm.endDate} onChange={(event) => setLoanForm({ ...loanForm, endDate: event.target.value })} /></Field>
             </div>
             <Field label="Observaciones" optional error={loanFieldErrors.notes}><Textarea value={loanForm.notes} onChange={(event) => setLoanForm({ ...loanForm, notes: event.target.value })} /></Field>
-            <Button type="submit">Crear prestamo</Button>
+            <Button type="submit" loading={submittingLoan}>Crear prestamo</Button>
           </form>
         </SectionCard>
       </div>
@@ -150,7 +220,7 @@ export function GarmentDetailPage({ id }: { id: number }) {
                   <td className="px-4 py-4 text-slate-400">{formatDate(loan.startDate)}</td>
                   <td className="px-4 py-4 text-slate-400">{formatDate(loan.endDate)}</td>
                   <td className="px-4 py-4 text-slate-400">{loan.responsiblePersonName || "Sin dato"}</td>
-                  <td className="px-4 py-4">{!loan.endDate ? <Button variant="secondary" onClick={() => finalizeLoan(loan.id)}>Finalizar</Button> : null}</td>
+                  <td className="px-4 py-4">{!loan.endDate ? <Button variant="secondary" loading={finalizingLoanId === loan.id} onClick={() => finalizeLoan(loan.id)}>Finalizar</Button> : null}</td>
                 </tr>
               ))}
             </DataTable>
@@ -166,7 +236,7 @@ export function GarmentDetailPage({ id }: { id: number }) {
               <Field label="En proceso" optional><Select value={washForm.inProgress ? "si" : "no"} onChange={(event) => setWashForm({ ...washForm, inProgress: event.target.value === "si" })}><option value="no">No</option><option value="si">Si</option></Select></Field>
             </div>
             <Field label="Observaciones" optional error={washFieldErrors.notes}><Textarea value={washForm.notes} onChange={(event) => setWashForm({ ...washForm, notes: event.target.value })} /></Field>
-            <Button type="submit">Crear lavado</Button>
+            <Button type="submit" loading={submittingWash}>Crear lavado</Button>
           </form>
         </SectionCard>
       </div>
@@ -181,7 +251,7 @@ export function GarmentDetailPage({ id }: { id: number }) {
                 <td className="px-4 py-4 text-white">{wash.description}</td>
                 <td className="px-4 py-4 text-slate-400">{wash.responsiblePersonName || "Sin dato"}</td>
                 <td className="px-4 py-4 text-slate-400">{wash.inProgress ? "En proceso" : "Finalizado"}</td>
-                <td className="px-4 py-4">{wash.inProgress ? <Button variant="secondary" onClick={() => finalizeWash(wash.id)}>Finalizar</Button> : null}</td>
+                <td className="px-4 py-4">{wash.inProgress ? <Button variant="secondary" loading={finalizingWashId === wash.id} onClick={() => finalizeWash(wash.id)}>Finalizar</Button> : null}</td>
               </tr>
             ))}
           </DataTable>

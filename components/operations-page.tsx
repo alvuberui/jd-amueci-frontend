@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
-import { DataTable, EmptyState, Page, PageHeader, SearchBox, SectionCard } from "@/components/ui";
+import { useFeedback } from "@/components/feedback-provider";
+import { DataTable, EmptyState, LoadingState, Page, PageHeader, SearchBox, SectionCard } from "@/components/ui";
 import { apiRequest, HttpError } from "@/lib/api";
 import { formatDate, labelize } from "@/lib/format";
 import type { Garment, GarmentLoan, GarmentWash, Instrument, InstrumentLoan, InstrumentRepair } from "@/lib/types";
@@ -11,9 +12,11 @@ type PageKind = "garmentLoans" | "garmentWashes" | "instrumentLoans" | "instrume
 
 export function OperationsPage({ kind }: { kind: PageKind }) {
   const { token } = useAuth();
+  const { notify } = useFeedback();
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<Array<Record<string, string | number | null>>>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
@@ -43,8 +46,15 @@ export function OperationsPage({ kind }: { kind: PageKind }) {
       }
     }
 
-    load().catch((err) => setError(err instanceof HttpError ? err.message : "No se pudo cargar la informacion"));
-  }, [kind, token]);
+    setLoading(true);
+    load()
+      .catch((err) => {
+        const message = err instanceof HttpError ? err.message : "No se pudo cargar la informacion";
+        setError(message);
+        notify({ title: "No se pudo cargar el histórico", description: message, tone: "error" });
+      })
+      .finally(() => setLoading(false));
+  }, [kind, notify, token]);
 
   const filtered = useMemo(() => {
     const normalized = query.toLowerCase();
@@ -66,7 +76,9 @@ export function OperationsPage({ kind }: { kind: PageKind }) {
       {error ? <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">{error}</div> : null}
       <SectionCard title="Listado">
         <SearchBox value={query} onChange={setQuery} placeholder="Buscar en el historico" />
-        {filtered.length === 0 ? (
+        {loading ? (
+          <LoadingState compact title="Cargando histórico" description="Unificando la información operativa." />
+        ) : filtered.length === 0 ? (
           <EmptyState text="No hay registros disponibles todavia." />
         ) : (
           <DataTable headers={headers.map(labelize)}>

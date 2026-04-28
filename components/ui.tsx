@@ -1,16 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { MouseEvent, useEffect, useMemo, useState, useTransition } from "react";
+import { LoaderCircle, Search } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { labelize } from "@/lib/format";
+import { useFeedback } from "@/components/feedback-provider";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return <div className="min-h-screen bg-slate-950 bg-mesh-dark text-slate-100">{children}</div>;
 }
 
 export function Page({ children }: { children: React.ReactNode }) {
-  return <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 lg:px-8">{children}</div>;
+  return <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-5 py-6 lg:px-8 lg:py-8">{children}</div>;
 }
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle: string; actions?: React.ReactNode }) {
@@ -18,11 +21,11 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
     <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div className="space-y-2">
         <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.24em] text-slate-300">
-          AMUECI Gestion
+          AMUECI
         </div>
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-white lg:text-4xl">{title}</h1>
-          <p className="mt-2 max-w-3xl text-sm text-slate-300 lg:text-base">{subtitle}</p>
+          <h1 className="text-[2rem] font-semibold tracking-tight text-white lg:text-[2.5rem]">{title}</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300 lg:text-base">{subtitle}</p>
         </div>
       </div>
       {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
@@ -38,7 +41,7 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section className={cn("rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-panel backdrop-blur-xl", className)}>
+    <section className={cn("rounded-[28px] border border-white/10 bg-slate-950/55 p-6 shadow-panel backdrop-blur-xl", className)}>
       {children}
     </section>
   );
@@ -73,25 +76,33 @@ export function Button({
   children,
   className,
   variant = "primary",
+  loading = false,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "ghost" | "danger";
+  loading?: boolean;
 }) {
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center rounded-2xl px-4 py-2.5 text-sm font-medium transition hover:-translate-y-0.5",
-        variant === "primary" && "bg-brand-500 text-white hover:bg-brand-400",
-        variant === "secondary" && "bg-white/10 text-white hover:bg-white/15",
-        variant === "ghost" && "border border-white/10 bg-transparent text-slate-200 hover:bg-white/5",
-        variant === "danger" && "bg-rose-500/15 text-rose-200 hover:bg-rose-500/25",
+        "flex w-full min-h-11 items-center justify-center gap-2 rounded-[14px] border px-4 py-2.5 text-sm font-medium shadow-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300/70 disabled:pointer-events-none disabled:opacity-65",
+        variant === "primary" && "border-brand-400/30 bg-brand-500 text-white shadow-[0_14px_34px_rgba(27,0,58,0.34)] hover:bg-[#2a0b4d]",
+        variant === "secondary" && "border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.1]",
+        variant === "ghost" && "border-white/0 bg-transparent text-slate-300 hover:border-white/10 hover:bg-white/[0.05] hover:text-white",
+        variant === "danger" && "border-rose-400/20 bg-rose-500/12 text-rose-100 hover:bg-rose-500/18",
         className,
       )}
+      disabled={props.disabled || loading}
       {...props}
     >
+      {loading ? <Spinner className="size-4" /> : null}
       {children}
     </button>
   );
+}
+
+export function Spinner({ className }: { className?: string }) {
+  return <LoaderCircle className={cn("animate-spin text-current", className)} />;
 }
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
@@ -173,6 +184,29 @@ export function EmptyState({ text }: { text: string }) {
   );
 }
 
+export function LoadingState({
+  title = "Cargando contenido",
+  description = "Estamos recuperando la información más reciente.",
+  compact = false,
+}: {
+  title?: string;
+  description?: string;
+  compact?: boolean;
+}) {
+  return (
+    <div className={cn(
+      "rounded-[24px] border border-white/10 bg-white/[0.03] text-center",
+      compact ? "px-5 py-8" : "px-6 py-14",
+    )}>
+      <div className="mx-auto flex size-14 items-center justify-center rounded-[18px] border border-white/10 bg-white/[0.03]">
+        <Spinner className="size-6 text-brand-300" />
+      </div>
+      <p className="mt-4 text-base font-semibold text-white">{title}</p>
+      <p className="mt-2 text-sm text-slate-400">{description}</p>
+    </div>
+  );
+}
+
 export function SearchBox({
   value,
   onChange,
@@ -193,13 +227,16 @@ export function SearchBox({
 export function ConfirmButton({
   label,
   onConfirm,
+  loading = false,
 }: {
   label: string;
   onConfirm: () => void;
+  loading?: boolean;
 }) {
   return (
     <Button
       variant="danger"
+      loading={loading}
       onClick={() => {
         if (window.confirm("Confirma que deseas eliminar este elemento.")) onConfirm();
       }}
@@ -213,12 +250,59 @@ export function Message({ text, tone = "error" }: { text?: string | null; tone?:
   if (!text) return null;
   return (
     <div className={cn(
-      "rounded-2xl border px-4 py-3 text-sm",
-      tone === "error" && "border-rose-400/20 bg-rose-400/10 text-rose-100",
-      tone === "success" && "border-emerald-400/20 bg-emerald-400/10 text-emerald-100",
+      "rounded-[18px] border px-4 py-3 text-sm",
+      tone === "error" && "border-rose-400/20 bg-rose-500/10 text-rose-50",
+      tone === "success" && "border-emerald-400/20 bg-emerald-500/10 text-emerald-50",
     )}>
       {text}
     </div>
+  );
+}
+
+export function TransitionLink({
+  href,
+  className,
+  children,
+}: {
+  href: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const { showLoader, hideLoader } = useFeedback();
+
+  useEffect(() => {
+    if (pathname === href) {
+      hideLoader();
+    }
+  }, [hideLoader, href, pathname]);
+
+  function handleClick(event: MouseEvent<HTMLAnchorElement>) {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      pathname === href
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    showLoader("Abriendo sección");
+    startTransition(() => {
+      router.push(href);
+    });
+  }
+
+  return (
+    <Link href={href} className={className} onClick={handleClick} aria-busy={isPending}>
+      {children}
+    </Link>
   );
 }
 
@@ -230,10 +314,10 @@ export function DataTable({
   children: React.ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-3xl border border-white/10">
+    <div className="overflow-hidden rounded-[24px] border border-white/10 bg-slate-950/35">
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-white/10 text-sm">
-          <thead className="bg-white/[0.03] text-left text-xs uppercase tracking-[0.16em] text-slate-400">
+          <thead className="bg-white/[0.04] text-left text-[11px] uppercase tracking-[0.16em] text-slate-400">
             <tr>{headers.map((header) => <th key={header} className="px-4 py-4 font-medium">{header}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-white/5">{children}</tbody>

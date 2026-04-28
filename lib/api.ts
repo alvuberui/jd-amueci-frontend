@@ -12,12 +12,13 @@ export class HttpError extends Error {
 }
 
 export async function apiRequest<T>(path: string, options: RequestInit = {}, token?: string | null): Promise<T> {
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
+    credentials: "include",
     headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers ?? {}),
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
     },
     cache: "no-store",
   });
@@ -31,5 +32,15 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}, tok
     return undefined as T;
   }
 
-  return response.json();
+  const contentLength = response.headers.get("content-length");
+  if (contentLength === "0") {
+    return undefined as T;
+  }
+
+  const text = await response.text();
+  if (!text.trim()) {
+    return undefined as T;
+  }
+
+  return JSON.parse(text) as T;
 }
