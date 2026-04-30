@@ -1,0 +1,9 @@
+node_modules
+.next
+out
+.git
+*.log
+tsconfig.tsbuildinfo
+.env
+.env.*
+!.env.production.example
