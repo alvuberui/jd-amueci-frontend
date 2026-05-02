@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { useFeedback } from "@/components/feedback-provider";
-import { DataTable, EmptyState, LoadingState, Page, PageHeader, SearchBox, SectionCard } from "@/components/ui";
+import { EmptyState, FilterableDataTable, LoadingState, Page, PageHeader, SearchBox, SectionCard } from "@/components/ui";
 import { apiRequest, HttpError } from "@/lib/api";
 import { formatDate, labelize } from "@/lib/format";
 import type { Garment, GarmentLoan, GarmentWash, Instrument, InstrumentLoan, InstrumentRepair } from "@/lib/types";
@@ -81,13 +81,16 @@ export function OperationsPage({ kind }: { kind: PageKind }) {
         ) : filtered.length === 0 ? (
           <EmptyState text="No hay registros disponibles todavia." />
         ) : (
-          <DataTable headers={headers.map(labelize)}>
-            {filtered.map((row) => (
-              <tr key={String(row.id)}>
-                {headers.map((header) => <td key={header} className="px-4 py-4 text-sm text-slate-300">{row[header] as string}</td>)}
-              </tr>
-            ))}
-          </DataTable>
+          <FilterableDataTable<Record<string, string | number | null>>
+            rows={filtered}
+            getRowKey={(row) => String(row.id)}
+            columns={headers.map((header) => ({
+              header: labelize(header),
+              filterValue: (row) => row[header],
+              render: (row) => String(row[header] ?? ""),
+              minWidth: header === "descripcion" ? 260 : 165,
+            }))}
+          />
         )}
       </SectionCard>
     </Page>

@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { useFeedback } from "@/components/feedback-provider";
-import { Button, ConfirmButton, DataTable, EmptyState, Field, Input, LoadingState, Message, Page, PageHeader, SearchBox, SectionCard, useSearch } from "@/components/ui";
+import { Button, ConfirmButton, EmptyState, Field, FilterableDataTable, Input, LoadingState, Message, Page, PageHeader, SearchBox, SectionCard, useSearch } from "@/components/ui";
 import { HttpError, apiRequest } from "@/lib/api";
 import type { Room } from "@/lib/types";
 
@@ -95,7 +95,7 @@ export function RoomsPage() {
   return (
     <Page>
       <PageHeader title="Aulas" subtitle="Administra las aulas de la sede para la banda y la escuela de música." />
-      <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
+      <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
         <SectionCard title={editingId ? "Editar aula" : "Nueva aula"} description="Define el nombre, la capacidad y el estado operativo de cada aula.">
           <form className="space-y-4" onSubmit={handleSubmit}>
             <Field label="Nombre" required><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
@@ -119,22 +119,22 @@ export function RoomsPage() {
             {loading ? <LoadingState compact title="Cargando aulas" description="Estamos preparando la sede." /> : filtered.length === 0 ? (
               <EmptyState text="Todavía no hay aulas registradas." />
             ) : (
-              <DataTable headers={["Aula", "Capacidad", "Estado", "Descripción", "Acciones"]}>
-                {filtered.map((item) => (
-                  <tr key={item.id}>
-                    <td className="px-4 py-4 text-white">{item.name}</td>
-                    <td className="px-4 py-4 text-slate-300">{item.capacity ?? "-"}</td>
-                    <td className="px-4 py-4 text-slate-300">{item.active ? "Activa" : "Inactiva"}</td>
-                    <td className="px-4 py-4 text-slate-400">{item.description || "Sin descripción"}</td>
-                    <td className="min-w-[220px] px-4 py-4">
-                      <div className="grid gap-2">
-                        <Button variant="secondary" onClick={() => startEdit(item)}>Editar</Button>
-                        <ConfirmButton label="Eliminar" loading={deletingId === item.id} onConfirm={() => handleDelete(item.id)} />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </DataTable>
+              <FilterableDataTable
+                rows={filtered}
+                getRowKey={(item) => item.id}
+                columns={[
+                  { header: "Aula", filterValue: (item) => item.name, render: (item) => <span className="font-medium text-white">{item.name}</span>, minWidth: 220 },
+                  { header: "Capacidad", filterValue: (item) => item.capacity ?? "-", render: (item) => item.capacity ?? "-", minWidth: 130 },
+                  { header: "Estado", filterValue: (item) => item.active ? "Activa" : "Inactiva", render: (item) => item.active ? "Activa" : "Inactiva", minWidth: 130 },
+                  { header: "Descripción", filterValue: (item) => item.description || "Sin descripción", render: (item) => <span className="text-slate-400">{item.description || "Sin descripción"}</span>, minWidth: 280 },
+                  { header: "Acciones", filterable: false, render: (item) => (
+                    <div className="grid gap-2">
+                      <Button variant="secondary" onClick={() => startEdit(item)}>Editar</Button>
+                      <ConfirmButton label="Eliminar" loading={deletingId === item.id} onConfirm={() => handleDelete(item.id)} />
+                    </div>
+                  ), cellClassName: "min-w-[220px]", minWidth: 220 },
+                ]}
+              />
             )}
           </div>
         </SectionCard>

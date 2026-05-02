@@ -68,7 +68,7 @@ export function ProtectedLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-mesh-dark">
-      <div className="mx-auto grid min-h-screen w-full max-w-[1600px] grid-cols-1 lg:grid-cols-[308px_minmax(0,1fr)]">
+      <div className="mx-auto grid min-h-screen w-full max-w-[1880px] grid-cols-1 lg:grid-cols-[308px_minmax(0,1fr)]">
         <aside className="border-b border-white/10 bg-slate-950/72 p-5 backdrop-blur-2xl lg:border-b-0 lg:border-r">
           <div className="flex items-center gap-3 rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
             <div className="flex size-12 items-center justify-center rounded-[16px] bg-brand-500 text-lg font-semibold text-white shadow-[0_10px_26px_rgba(47,125,246,0.35)]">A</div>

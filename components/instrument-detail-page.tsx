@@ -4,7 +4,7 @@ import Image from "next/image";
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { useFeedback } from "@/components/feedback-provider";
-import { Button, DataTable, EmptyState, Field, Input, LoadingState, Message, Page, PageHeader, SectionCard, Select, StatusBadge, Textarea, TransitionLink } from "@/components/ui";
+import { Button, EmptyState, Field, FilterableDataTable, Input, LoadingState, Message, Page, PageHeader, SectionCard, Select, StatusBadge, Textarea, TransitionLink } from "@/components/ui";
 import { apiRequest, HttpError } from "@/lib/api";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 import type { Instrument, InstrumentLoan, InstrumentRepair, Member } from "@/lib/types";
@@ -203,17 +203,17 @@ export function InstrumentDetailPage({ id }: { id: number }) {
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <SectionCard title="Historico de prestamos">
           {loans.length === 0 ? <EmptyState text="Sin prestamos registrados." /> : (
-            <DataTable headers={["Persona", "Inicio", "Fin", "Responsable", "Acciones"]}>
-              {loans.map((loan) => (
-                <tr key={loan.id}>
-                  <td className="px-4 py-4 text-white">{loan.personName}</td>
-                  <td className="px-4 py-4 text-slate-400">{formatDate(loan.startDate)}</td>
-                  <td className="px-4 py-4 text-slate-400">{formatDate(loan.endDate)}</td>
-                  <td className="px-4 py-4 text-slate-400">{loan.responsiblePersonName || "Sin dato"}</td>
-                  <td className="px-4 py-4">{!loan.endDate ? <Button variant="secondary" loading={finalizingLoanId === loan.id} onClick={() => finalizeLoan(loan.id)}>Finalizar</Button> : null}</td>
-                </tr>
-              ))}
-            </DataTable>
+            <FilterableDataTable
+              rows={loans}
+              getRowKey={(loan) => loan.id}
+              columns={[
+                { header: "Persona", filterValue: (loan) => loan.personName, render: (loan) => <span className="text-white">{loan.personName}</span>, minWidth: 220 },
+                { header: "Inicio", filterValue: (loan) => formatDate(loan.startDate), render: (loan) => <span className="text-slate-400">{formatDate(loan.startDate)}</span>, minWidth: 150 },
+                { header: "Fin", filterValue: (loan) => formatDate(loan.endDate), render: (loan) => <span className="text-slate-400">{formatDate(loan.endDate)}</span>, minWidth: 150 },
+                { header: "Responsable", filterValue: (loan) => loan.responsiblePersonName || "Sin dato", render: (loan) => <span className="text-slate-400">{loan.responsiblePersonName || "Sin dato"}</span>, minWidth: 220 },
+                { header: "Acciones", filterable: false, render: (loan) => !loan.endDate ? <Button variant="secondary" loading={finalizingLoanId === loan.id} onClick={() => finalizeLoan(loan.id)}>Finalizar</Button> : null, minWidth: 160 },
+              ]}
+            />
           )}
         </SectionCard>
 
@@ -234,9 +234,17 @@ export function InstrumentDetailPage({ id }: { id: number }) {
 
       <SectionCard title="Historico de reparaciones">
         {repairs.length === 0 ? <EmptyState text="Sin reparaciones registradas." /> : (
-          <DataTable headers={["Inicio", "Fin", "Descripcion", "Proveedor", "Coste"]}>
-            {repairs.map((repair) => <tr key={repair.id}><td className="px-4 py-4 text-slate-400">{formatDate(repair.startDate)}</td><td className="px-4 py-4 text-slate-400">{formatDate(repair.endDate)}</td><td className="px-4 py-4 text-white">{repair.description}</td><td className="px-4 py-4 text-slate-400">{repair.provider || "Sin dato"}</td><td className="px-4 py-4 text-slate-400">{formatCurrency(repair.cost)}</td></tr>)}
-          </DataTable>
+          <FilterableDataTable
+            rows={repairs}
+            getRowKey={(repair) => repair.id}
+            columns={[
+              { header: "Inicio", filterValue: (repair) => formatDate(repair.startDate), render: (repair) => <span className="text-slate-400">{formatDate(repair.startDate)}</span>, minWidth: 150 },
+              { header: "Fin", filterValue: (repair) => formatDate(repair.endDate), render: (repair) => <span className="text-slate-400">{formatDate(repair.endDate)}</span>, minWidth: 150 },
+              { header: "Descripcion", filterValue: (repair) => repair.description, render: (repair) => <span className="text-white">{repair.description}</span>, minWidth: 260 },
+              { header: "Proveedor", filterValue: (repair) => repair.provider || "Sin dato", render: (repair) => <span className="text-slate-400">{repair.provider || "Sin dato"}</span>, minWidth: 200 },
+              { header: "Coste", filterValue: (repair) => formatCurrency(repair.cost), render: (repair) => <span className="text-slate-400">{formatCurrency(repair.cost)}</span>, minWidth: 150 },
+            ]}
+          />
         )}
       </SectionCard>
     </Page>

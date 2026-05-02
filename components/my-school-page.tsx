@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { useFeedback } from "@/components/feedback-provider";
-import { DataTable, EmptyState, LoadingState, Page, PageHeader, SectionCard } from "@/components/ui";
+import { EmptyState, FilterableDataTable, LoadingState, Page, PageHeader, SectionCard } from "@/components/ui";
 import { HttpError, apiRequest } from "@/lib/api";
 import type { MySchoolAgenda } from "@/lib/types";
 
@@ -50,36 +50,36 @@ export function MySchoolPage() {
       {canSeeClasses ? (
         <SectionCard title="Próximas clases" description="Se muestran las sesiones programadas para los próximos 30 días, incluidas recuperaciones o reprogramaciones.">
           {agenda.classes.length === 0 ? <EmptyState text="No hay clases previstas en este periodo." /> : (
-            <DataTable headers={["Fecha", "Tipo", "Asignatura", "Aula", "Horario", "Profesor", "Alumnado"]}>
-              {agenda.classes.map((item, index) => (
-                <tr key={`${item.date}-${item.subjectName}-${index}`}>
-                  <td className="px-4 py-4 text-white">{item.date}</td>
-                  <td className="px-4 py-4 text-slate-300">{item.type}</td>
-                  <td className="px-4 py-4 text-slate-300">{item.subjectName}</td>
-                  <td className="px-4 py-4 text-slate-300">{item.roomName}</td>
-                  <td className="px-4 py-4 text-slate-300">{item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : "Por definir"}</td>
-                  <td className="px-4 py-4 text-slate-400">{item.teacherName || "-"}</td>
-                  <td className="px-4 py-4 text-slate-400">{item.studentNames || "-"}</td>
-                </tr>
-              ))}
-            </DataTable>
+            <FilterableDataTable
+              rows={agenda.classes}
+              getRowKey={(item, index) => `${item.date}-${item.subjectName}-${index}`}
+              columns={[
+                { header: "Fecha", filterValue: (item) => item.date, render: (item) => <span className="text-white">{item.date}</span>, minWidth: 150 },
+                { header: "Tipo", filterValue: (item) => item.type, render: (item) => item.type, minWidth: 150 },
+                { header: "Asignatura", filterValue: (item) => item.subjectName, render: (item) => item.subjectName, minWidth: 190 },
+                { header: "Aula", filterValue: (item) => item.roomName, render: (item) => item.roomName, minWidth: 170 },
+                { header: "Horario", filterValue: (item) => item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : "Por definir", render: (item) => item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : "Por definir", minWidth: 160 },
+                { header: "Profesor", filterValue: (item) => item.teacherName || "-", render: (item) => <span className="text-slate-400">{item.teacherName || "-"}</span>, minWidth: 200 },
+                { header: "Alumnado", filterValue: (item) => item.studentNames || "-", render: (item) => <span className="text-slate-400">{item.studentNames || "-"}</span>, minWidth: 240 },
+              ]}
+            />
           )}
         </SectionCard>
       ) : null}
 
       <SectionCard title="Reservas de aula" description="Listado de tus reservas futuras dentro del módulo de aulas.">
         {agenda.reservations.length === 0 ? <EmptyState text="No tienes reservas activas ahora mismo." /> : (
-          <DataTable headers={["Fecha", "Aula", "Tipo", "Horario", "Notas"]}>
-            {agenda.reservations.map((item) => (
-              <tr key={item.id}>
-                <td className="px-4 py-4 text-white">{item.reservationDate}</td>
-                <td className="px-4 py-4 text-slate-300">{item.roomName}</td>
-                <td className="px-4 py-4 text-slate-300">{item.type}</td>
-                <td className="px-4 py-4 text-slate-300">{item.startTime} - {item.endTime}</td>
-                <td className="px-4 py-4 text-slate-400">{item.notes || "Sin notas"}</td>
-              </tr>
-            ))}
-          </DataTable>
+          <FilterableDataTable
+            rows={agenda.reservations}
+            getRowKey={(item) => item.id}
+            columns={[
+              { header: "Fecha", filterValue: (item) => item.reservationDate, render: (item) => <span className="text-white">{item.reservationDate}</span>, minWidth: 150 },
+              { header: "Aula", filterValue: (item) => item.roomName, render: (item) => item.roomName, minWidth: 180 },
+              { header: "Tipo", filterValue: (item) => item.type, render: (item) => item.type, minWidth: 150 },
+              { header: "Horario", filterValue: (item) => `${item.startTime} - ${item.endTime}`, render: (item) => `${item.startTime} - ${item.endTime}`, minWidth: 160 },
+              { header: "Notas", filterValue: (item) => item.notes || "Sin notas", render: (item) => <span className="text-slate-400">{item.notes || "Sin notas"}</span>, minWidth: 260 },
+            ]}
+          />
         )}
       </SectionCard>
     </Page>

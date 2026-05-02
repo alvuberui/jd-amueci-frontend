@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { useFeedback } from "@/components/feedback-provider";
-import { Button, ConfirmButton, DataTable, EmptyState, Field, Input, LoadingState, Message, Page, PageHeader, SearchBox, SectionCard, Select, StatusBadge, Textarea, TransitionLink, useSearch } from "@/components/ui";
+import { Button, ConfirmButton, EmptyState, Field, FilterableDataTable, Input, LoadingState, Message, Page, PageHeader, SearchBox, SectionCard, Select, StatusBadge, Textarea, TransitionLink, useSearch } from "@/components/ui";
 import { apiRequest, HttpError } from "@/lib/api";
 import { formatCurrency, formatDate, formatDateTime, labelize } from "@/lib/format";
 import type { Instrument, InstrumentStatus } from "@/lib/types";
@@ -138,7 +138,7 @@ export function InstrumentsPage() {
   return (
     <Page>
       <PageHeader title="Instrumentos" subtitle="Inventario musical con contexto económico, estado operativo y acceso al detalle." />
-      <div className="grid gap-6 xl:grid-cols-[440px_minmax(0,1fr)]">
+      <div className="grid gap-6 xl:grid-cols-[400px_minmax(0,1fr)]">
         <SectionCard title={editingId ? "Editar instrumento" : "Nuevo instrumento"} description="Alta rápida con información técnica y económica.">
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
@@ -174,47 +174,49 @@ export function InstrumentsPage() {
         <SectionCard title="Catálogo instrumental" description="Consulta rápida del parque instrumental y acceso al histórico por ficha.">
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar por nombre, familia o marca" />
           {loading ? <LoadingState compact title="Cargando instrumentos" description="Preparando el catálogo musical." /> : filtered.length === 0 ? <EmptyState text="No hay instrumentos registrados todavía." /> : (
-            <DataTable headers={["Nombre", "Familia", "Estado", "Compra", "Valor actual", "Acciones"]}>
-              {filtered.map((item) => (
-                <tr key={item.id} className="text-slate-200">
-                  <td className="px-4 py-4">
+            <FilterableDataTable
+              rows={filtered}
+              getRowKey={(item) => item.id}
+              columns={[
+                { header: "Nombre", filterValue: (item) => `${item.name} ${item.brand ?? ""} ${item.model ?? ""}`, render: (item) => (
+                  <div>
                     <div className="font-medium text-white">{item.name}</div>
                     <div className="text-xs text-slate-500">{item.brand} {item.model}</div>
-                  </td>
-                  <td className="px-4 py-4">{item.family}</td>
-                  <td className="px-4 py-4"><StatusBadge value={item.status} /></td>
-                  <td className="px-4 py-4 text-slate-400">{formatDate(item.purchaseDate)}</td>
-                  <td className="px-4 py-4 text-slate-400">{formatCurrency(item.currentPrice)}</td>
-                  <td className="w-[220px] px-4 py-4">
-                    <div className="grid min-w-[180px] gap-2">
-                      <TransitionLink className="flex w-full min-h-10 items-center justify-center rounded-[16px] border border-white/10 bg-white/10 px-3.5 py-2 text-sm font-semibold text-white hover:bg-white/15" href={`/instrumentos/${item.id}`}>Detalle</TransitionLink>
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          setForm({
-                            name: item.name,
-                            family: item.family,
-                            brand: item.brand ?? "",
-                            model: item.model ?? "",
-                            serialNumber: item.serialNumber ?? "",
-                            status: item.status,
-                            purchaseDate: item.purchaseDate ?? "",
-                            purchasePrice: item.purchasePrice?.toString() ?? "",
-                            currentPrice: item.currentPrice?.toString() ?? "",
-                            photoUrl: item.photoUrl ?? "",
-                            notes: item.notes ?? "",
-                          });
-                          setEditingId(item.id);
-                        }}
-                      >
-                        Editar
-                      </Button>
-                      <ConfirmButton label="Eliminar" loading={deletingId === item.id} onConfirm={() => handleDelete(item.id)} />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </DataTable>
+                  </div>
+                ), minWidth: 240 },
+                { header: "Familia", filterValue: (item) => item.family, render: (item) => item.family, minWidth: 170 },
+                { header: "Estado", filterValue: (item) => labelize(item.status), render: (item) => <StatusBadge value={item.status} />, minWidth: 170 },
+                { header: "Compra", filterValue: (item) => formatDate(item.purchaseDate), render: (item) => <span className="text-slate-400">{formatDate(item.purchaseDate)}</span>, minWidth: 150 },
+                { header: "Valor actual", filterValue: (item) => formatCurrency(item.currentPrice), render: (item) => <span className="text-slate-400">{formatCurrency(item.currentPrice)}</span>, minWidth: 150 },
+                { header: "Acciones", filterable: false, render: (item) => (
+                  <div className="grid min-w-[180px] gap-2">
+                    <TransitionLink className="flex w-full min-h-10 items-center justify-center rounded-[16px] border border-white/10 bg-white/10 px-3.5 py-2 text-sm font-semibold text-white hover:bg-white/15" href={`/instrumentos/${item.id}`}>Detalle</TransitionLink>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setForm({
+                          name: item.name,
+                          family: item.family,
+                          brand: item.brand ?? "",
+                          model: item.model ?? "",
+                          serialNumber: item.serialNumber ?? "",
+                          status: item.status,
+                          purchaseDate: item.purchaseDate ?? "",
+                          purchasePrice: item.purchasePrice?.toString() ?? "",
+                          currentPrice: item.currentPrice?.toString() ?? "",
+                          photoUrl: item.photoUrl ?? "",
+                          notes: item.notes ?? "",
+                        });
+                        setEditingId(item.id);
+                      }}
+                    >
+                      Editar
+                    </Button>
+                    <ConfirmButton label="Eliminar" loading={deletingId === item.id} onConfirm={() => handleDelete(item.id)} />
+                  </div>
+                ), cellClassName: "w-[220px]", minWidth: 220 },
+              ]}
+            />
           )}
           <p className="text-sm text-slate-500">Última sincronización visible: {items[0] ? formatDateTime(items[0].updatedAt) : "sin datos"}</p>
         </SectionCard>

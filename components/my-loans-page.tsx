@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { useFeedback } from "@/components/feedback-provider";
-import { DataTable, EmptyState, LoadingState, Page, PageHeader, SectionCard, StatusBadge } from "@/components/ui";
+import { EmptyState, FilterableDataTable, LoadingState, Page, PageHeader, SectionCard, StatusBadge } from "@/components/ui";
 import { HttpError, apiRequest } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type { MyLoansResponse } from "@/lib/types";
@@ -47,19 +47,16 @@ export function MyLoansPage() {
           {loading ? <LoadingState compact title="Cargando préstamos de vestimenta" description="Un momento, estamos preparando la información." /> : data.garmentLoans.length === 0 ? (
             <EmptyState text="No tienes préstamos de vestimenta registrados." />
           ) : (
-            <DataTable headers={["Vestimenta", "Inicio", "Fin", "Estado"]}>
-              {data.garmentLoans.map((loan) => {
-                const active = !loan.endDate;
-                return (
-                  <tr key={loan.id}>
-                    <td className="px-4 py-4 text-white">{loan.garmentIdentifier}</td>
-                    <td className="px-4 py-4 text-slate-300">{formatDate(loan.startDate)}</td>
-                    <td className="px-4 py-4 text-slate-300">{formatDate(loan.endDate)}</td>
-                    <td className="px-4 py-4"><StatusBadge value={active ? "PRESTADA" : "DISPONIBLE"} /></td>
-                  </tr>
-                );
-              })}
-            </DataTable>
+            <FilterableDataTable
+              rows={data.garmentLoans}
+              getRowKey={(loan) => loan.id}
+              columns={[
+                { header: "Vestimenta", filterValue: (loan) => loan.garmentIdentifier, render: (loan) => <span className="text-white">{loan.garmentIdentifier}</span>, minWidth: 200 },
+                { header: "Inicio", filterValue: (loan) => formatDate(loan.startDate), render: (loan) => formatDate(loan.startDate), minWidth: 150 },
+                { header: "Fin", filterValue: (loan) => formatDate(loan.endDate), render: (loan) => formatDate(loan.endDate), minWidth: 150 },
+                { header: "Estado", filterValue: (loan) => !loan.endDate ? "Prestada" : "Disponible", render: (loan) => <StatusBadge value={!loan.endDate ? "PRESTADA" : "DISPONIBLE"} />, minWidth: 160 },
+              ]}
+            />
           )}
         </SectionCard>
 
@@ -67,19 +64,16 @@ export function MyLoansPage() {
           {loading ? <LoadingState compact title="Cargando préstamos de instrumento" description="Un momento, estamos preparando la información." /> : data.instrumentLoans.length === 0 ? (
             <EmptyState text="No tienes préstamos de instrumento registrados." />
           ) : (
-            <DataTable headers={["Instrumento", "Inicio", "Fin", "Estado"]}>
-              {data.instrumentLoans.map((loan) => {
-                const active = !loan.endDate;
-                return (
-                  <tr key={loan.id}>
-                    <td className="px-4 py-4 text-white">{loan.instrumentName}</td>
-                    <td className="px-4 py-4 text-slate-300">{formatDate(loan.startDate)}</td>
-                    <td className="px-4 py-4 text-slate-300">{formatDate(loan.endDate)}</td>
-                    <td className="px-4 py-4"><StatusBadge value={active ? "PRESTADO" : "DISPONIBLE"} /></td>
-                  </tr>
-                );
-              })}
-            </DataTable>
+            <FilterableDataTable
+              rows={data.instrumentLoans}
+              getRowKey={(loan) => loan.id}
+              columns={[
+                { header: "Instrumento", filterValue: (loan) => loan.instrumentName, render: (loan) => <span className="text-white">{loan.instrumentName}</span>, minWidth: 220 },
+                { header: "Inicio", filterValue: (loan) => formatDate(loan.startDate), render: (loan) => formatDate(loan.startDate), minWidth: 150 },
+                { header: "Fin", filterValue: (loan) => formatDate(loan.endDate), render: (loan) => formatDate(loan.endDate), minWidth: 150 },
+                { header: "Estado", filterValue: (loan) => !loan.endDate ? "Prestado" : "Disponible", render: (loan) => <StatusBadge value={!loan.endDate ? "PRESTADO" : "DISPONIBLE"} />, minWidth: 160 },
+              ]}
+            />
           )}
         </SectionCard>
       </div>

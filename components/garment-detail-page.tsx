@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { useFeedback } from "@/components/feedback-provider";
-import { Button, DataTable, EmptyState, Field, Input, LoadingState, Message, Page, PageHeader, SectionCard, Select, StatusBadge, Textarea, TransitionLink } from "@/components/ui";
+import { Button, EmptyState, Field, FilterableDataTable, Input, LoadingState, Message, Page, PageHeader, SectionCard, Select, StatusBadge, Textarea, TransitionLink } from "@/components/ui";
 import { apiRequest, HttpError } from "@/lib/api";
 import { formatDate, formatDateTime, labelize } from "@/lib/format";
 import type { Garment, GarmentLoan, GarmentWash, Member } from "@/lib/types";
@@ -213,17 +213,17 @@ export function GarmentDetailPage({ id }: { id: number }) {
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <SectionCard title="Historico de prestamos">
           {loans.length === 0 ? <EmptyState text="Sin prestamos registrados." /> : (
-            <DataTable headers={["Persona", "Inicio", "Fin", "Responsable", "Acciones"]}>
-              {loans.map((loan) => (
-                <tr key={loan.id}>
-                  <td className="px-4 py-4 text-white">{loan.personName}</td>
-                  <td className="px-4 py-4 text-slate-400">{formatDate(loan.startDate)}</td>
-                  <td className="px-4 py-4 text-slate-400">{formatDate(loan.endDate)}</td>
-                  <td className="px-4 py-4 text-slate-400">{loan.responsiblePersonName || "Sin dato"}</td>
-                  <td className="px-4 py-4">{!loan.endDate ? <Button variant="secondary" loading={finalizingLoanId === loan.id} onClick={() => finalizeLoan(loan.id)}>Finalizar</Button> : null}</td>
-                </tr>
-              ))}
-            </DataTable>
+            <FilterableDataTable
+              rows={loans}
+              getRowKey={(loan) => loan.id}
+              columns={[
+                { header: "Persona", filterValue: (loan) => loan.personName, render: (loan) => <span className="text-white">{loan.personName}</span>, minWidth: 220 },
+                { header: "Inicio", filterValue: (loan) => formatDate(loan.startDate), render: (loan) => <span className="text-slate-400">{formatDate(loan.startDate)}</span>, minWidth: 150 },
+                { header: "Fin", filterValue: (loan) => formatDate(loan.endDate), render: (loan) => <span className="text-slate-400">{formatDate(loan.endDate)}</span>, minWidth: 150 },
+                { header: "Responsable", filterValue: (loan) => loan.responsiblePersonName || "Sin dato", render: (loan) => <span className="text-slate-400">{loan.responsiblePersonName || "Sin dato"}</span>, minWidth: 220 },
+                { header: "Acciones", filterable: false, render: (loan) => !loan.endDate ? <Button variant="secondary" loading={finalizingLoanId === loan.id} onClick={() => finalizeLoan(loan.id)}>Finalizar</Button> : null, minWidth: 160 },
+              ]}
+            />
           )}
         </SectionCard>
 
@@ -243,18 +243,18 @@ export function GarmentDetailPage({ id }: { id: number }) {
 
       <SectionCard title="Historico de lavados">
         {washes.length === 0 ? <EmptyState text="Sin lavados registrados." /> : (
-          <DataTable headers={["Inicio", "Fin", "Descripcion", "Responsable", "Estado", "Acciones"]}>
-            {washes.map((wash) => (
-              <tr key={wash.id}>
-                <td className="px-4 py-4 text-slate-400">{formatDate(wash.startDate)}</td>
-                <td className="px-4 py-4 text-slate-400">{formatDate(wash.endDate)}</td>
-                <td className="px-4 py-4 text-white">{wash.description}</td>
-                <td className="px-4 py-4 text-slate-400">{wash.responsiblePersonName || "Sin dato"}</td>
-                <td className="px-4 py-4 text-slate-400">{wash.inProgress ? "En proceso" : "Finalizado"}</td>
-                <td className="px-4 py-4">{wash.inProgress ? <Button variant="secondary" loading={finalizingWashId === wash.id} onClick={() => finalizeWash(wash.id)}>Finalizar</Button> : null}</td>
-              </tr>
-            ))}
-          </DataTable>
+          <FilterableDataTable
+            rows={washes}
+            getRowKey={(wash) => wash.id}
+            columns={[
+              { header: "Inicio", filterValue: (wash) => formatDate(wash.startDate), render: (wash) => <span className="text-slate-400">{formatDate(wash.startDate)}</span>, minWidth: 150 },
+              { header: "Fin", filterValue: (wash) => formatDate(wash.endDate), render: (wash) => <span className="text-slate-400">{formatDate(wash.endDate)}</span>, minWidth: 150 },
+              { header: "Descripcion", filterValue: (wash) => wash.description, render: (wash) => <span className="text-white">{wash.description}</span>, minWidth: 260 },
+              { header: "Responsable", filterValue: (wash) => wash.responsiblePersonName || "Sin dato", render: (wash) => <span className="text-slate-400">{wash.responsiblePersonName || "Sin dato"}</span>, minWidth: 220 },
+              { header: "Estado", filterValue: (wash) => wash.inProgress ? "En proceso" : "Finalizado", render: (wash) => <span className="text-slate-400">{wash.inProgress ? "En proceso" : "Finalizado"}</span>, minWidth: 150 },
+              { header: "Acciones", filterable: false, render: (wash) => wash.inProgress ? <Button variant="secondary" loading={finalizingWashId === wash.id} onClick={() => finalizeWash(wash.id)}>Finalizar</Button> : null, minWidth: 160 },
+            ]}
+          />
         )}
       </SectionCard>
     </Page>

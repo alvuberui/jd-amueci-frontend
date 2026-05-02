@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { useFeedback } from "@/components/feedback-provider";
-import { Button, DataTable, EmptyState, Field, Input, LoadingState, Page, PageHeader, SectionCard, Select } from "@/components/ui";
+import { Button, EmptyState, Field, FilterableDataTable, Input, LoadingState, Page, PageHeader, SectionCard, Select } from "@/components/ui";
 import { HttpError, apiRequest } from "@/lib/api";
 import { QUARTER_HOUR_OPTIONS, todayIso } from "@/lib/time";
 import type { BandRecurringReservation, BandRecurringReservationException, RoomAvailability, RoomReservation } from "@/lib/types";
@@ -20,6 +20,7 @@ const initialForm = {
 
 const initialRecurringForm = { roomId: "", dayOfWeek: "1", startTime: "21:00", endTime: "22:00", startDate: "", endDate: "", notes: "", active: true };
 const initialRecurringExceptionForm = { reservationId: "", exceptionDate: "", notes: "" };
+const dayNames = ["", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 
 export function RoomAvailabilityPage() {
   const { token, user } = useAuth();
@@ -29,6 +30,7 @@ export function RoomAvailabilityPage() {
   const [availability, setAvailability] = useState<RoomAvailability | null>(null);
   const [myReservations, setMyReservations] = useState<RoomReservation[]>([]);
   const [recurringReservations, setRecurringReservations] = useState<BandRecurringReservation[]>([]);
+  const [recurringExceptionsByReservation, setRecurringExceptionsByReservation] = useState<Record<number, BandRecurringReservationException[]>>({});
   const [form, setForm] = useState(initialForm);
   const [recurringForm, setRecurringForm] = useState(initialRecurringForm);
   const [recurringExceptionForm, setRecurringExceptionForm] = useState(initialRecurringExceptionForm);
@@ -50,9 +52,16 @@ export function RoomAvailabilityPage() {
       apiRequest<RoomReservation[]>("/api/aulas/mis-reservas"),
       isBoard ? apiRequest<BandRecurringReservation[]>("/api/aulas/reservas-recurrentes-banda") : Promise.resolve([]),
     ]);
+    const recurringExceptionsResponse = isBoard
+      ? Object.fromEntries(await Promise.all(recurringResponse.map(async (reservation) => [
+          reservation.id,
+          await apiRequest<BandRecurringReservationException[]>(`/api/aulas/reservas-recurrentes-banda/${reservation.id}/excepciones`),
+        ])))
+      : {};
     setAvailability(availabilityResponse);
     setMyReservations(reservationsResponse);
     setRecurringReservations(recurringResponse);
+    setRecurringExceptionsByReservation(recurringExceptionsResponse);
   }
 
   useEffect(() => {
@@ -81,7 +90,7 @@ export function RoomAvailabilityPage() {
         body: JSON.stringify({
           ...form,
           roomId: Number(form.roomId),
-          reservationDate: form.reservationDate || date,
+          reservationDate: form.reservationDate || minReservationDate,
         }),
       });
       notify({ title: "Reserva guardada", tone: "success" });
@@ -107,6 +116,10 @@ export function RoomAvailabilityPage() {
       notes: item.notes ?? "",
       active: item.active,
     });
+  }
+
+  function startRecurringException(item: BandRecurringReservation) {
+    setRecurringExceptionForm({ ...initialRecurringExceptionForm, reservationId: String(item.id) });
   }
 
   async function deactivateRecurring(reservationId: number) {
@@ -135,6 +148,10 @@ export function RoomAvailabilityPage() {
     }
   }
 
+  const selectedRecurringExceptions = recurringExceptionForm.reservationId
+    ? recurringExceptionsByReservation[Number(recurringExceptionForm.reservationId)] ?? []
+    : [];
+
   return (
     <Page>
       <PageHeader title="Disponibilidad de aulas" subtitle="Consulta la ocupación diaria y reserva un hueco libre para estudio o actividad de banda." />
@@ -142,7 +159,6 @@ export function RoomAvailabilityPage() {
         {canReserve ? (
           <SectionCard title="Nueva reserva" description="El sistema bloqueará automáticamente cualquier solape con escuela o reservas ya confirmadas.">
             <form className="grid gap-4" onSubmit={handleSubmit}>
-              <Field label="Fecha de consulta" required><Input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></Field>
               <Field label="Fecha de reserva" required><Input type="date" min={minReservationDate} value={form.reservationDate || minReservationDate} onChange={(event) => setForm({ ...form, reservationDate: event.target.value })} /></Field>
               <Field label="Aula" required>
                 <Select value={form.roomId} onChange={(event) => setForm({ ...form, roomId: event.target.value })}>
@@ -176,8 +192,12 @@ export function RoomAvailabilityPage() {
         ) : null}
 
         <SectionCard title="Agenda del día" description="Aquí ves todas las ocupaciones previstas para la fecha seleccionada.">
-          {loading || !availability ? <LoadingState compact title="Cargando disponibilidad" description="Calculando horarios y reservas del día." /> : (
-            <div className="space-y-4">
+          <div className="space-y-4">
+            <Field label="Fecha de consulta" required>
+              <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+            </Field>
+            {loading || !availability ? <LoadingState compact title="Cargando disponibilidad" description="Calculando horarios y reservas del día." /> : (
+              <>
               {availability.rooms.map((room) => (
                 <div key={room.roomId} className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4">
                   <div className="flex items-center justify-between gap-3">
@@ -200,8 +220,9 @@ export function RoomAvailabilityPage() {
                   )}
                 </div>
               ))}
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </SectionCard>
       </div>
 
@@ -258,24 +279,39 @@ export function RoomAvailabilityPage() {
             {editingRecurringId ? <div className="flex items-end"><Button type="button" variant="secondary" onClick={() => { setEditingRecurringId(null); setRecurringForm(initialRecurringForm); }}>Cancelar edición</Button></div> : null}
           </form>
           {recurringReservations.length === 0 ? <EmptyState text="Aún no hay reservas recurrentes de banda." /> : (
-            <DataTable headers={["Aula", "Día", "Horario", "Rango", "Estado", "Notas", "Acciones"]}>
-              {recurringReservations.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-4 py-4 text-white">{item.roomName}</td>
-                  <td className="px-4 py-4 text-slate-300">{["","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"][item.dayOfWeek]}</td>
-                  <td className="px-4 py-4 text-slate-300">{item.startTime} - {item.endTime}</td>
-                  <td className="px-4 py-4 text-slate-300">{item.startDate} - {item.endDate}</td>
-                  <td className="px-4 py-4 text-slate-300">{item.active ? "Activa" : "Inactiva"}</td>
-                  <td className="px-4 py-4 text-slate-400">{item.notes || "Sin notas"}</td>
-                  <td className="min-w-[220px] px-4 py-4">
+            <FilterableDataTable
+              rows={recurringReservations}
+              getRowKey={(item) => item.id}
+              columns={[
+                { header: "Aula", filterValue: (item) => item.roomName, render: (item) => <span className="text-white">{item.roomName}</span>, minWidth: 180 },
+                { header: "Día", filterValue: (item) => dayNames[item.dayOfWeek], render: (item) => dayNames[item.dayOfWeek], minWidth: 140 },
+                { header: "Horario", filterValue: (item) => `${item.startTime} - ${item.endTime}`, render: (item) => `${item.startTime} - ${item.endTime}`, minWidth: 150 },
+                { header: "Rango", filterValue: (item) => `${item.startDate} - ${item.endDate}`, render: (item) => `${item.startDate} - ${item.endDate}`, minWidth: 220 },
+                { header: "Estado", filterValue: (item) => item.active ? "Activa" : "Inactiva", render: (item) => item.active ? "Activa" : "Inactiva", minWidth: 130 },
+                { header: "Notas", filterValue: (item) => item.notes || "Sin notas", render: (item) => <span className="text-slate-400">{item.notes || "Sin notas"}</span>, minWidth: 220 },
+                { header: "Excepciones", filterValue: (item) => (recurringExceptionsByReservation[item.id] ?? []).map((exception) => `${exception.exceptionDate} ${exception.notes ?? ""}`).join(" "), render: (item) => (
+                  (recurringExceptionsByReservation[item.id] ?? []).length === 0 ? (
+                    <span className="text-slate-500">Sin excepciones</span>
+                  ) : (
                     <div className="grid gap-2">
-                      <Button variant="secondary" onClick={() => startEditRecurring(item)}>Editar</Button>
-                      {item.active ? <Button variant="danger" onClick={() => deactivateRecurring(item.id)}>Desactivar</Button> : null}
+                      {(recurringExceptionsByReservation[item.id] ?? []).map((exception) => (
+                        <div key={exception.id} className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-2">
+                          <p className="text-sm font-medium text-white">{exception.exceptionDate}</p>
+                          <p className="mt-1 text-xs text-slate-400">{exception.notes || "Sin motivo indicado"}</p>
+                        </div>
+                      ))}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </DataTable>
+                  )
+                ), cellClassName: "min-w-[240px]", minWidth: 280 },
+                { header: "Acciones", filterable: false, render: (item) => (
+                  <div className="grid gap-2">
+                    <Button variant="secondary" onClick={() => startEditRecurring(item)}>Editar</Button>
+                    {item.active ? <Button variant="secondary" onClick={() => startRecurringException(item)}>Añadir excepción</Button> : null}
+                    {item.active ? <Button variant="danger" onClick={() => deactivateRecurring(item.id)}>Desactivar</Button> : null}
+                  </div>
+                ), cellClassName: "min-w-[220px]", minWidth: 220 },
+              ]}
+            />
           )}
           {recurringReservations.length > 0 ? (
             <form className="mt-6 grid gap-4 lg:grid-cols-4" onSubmit={async (event: FormEvent) => {
@@ -287,7 +323,7 @@ export function RoomAvailabilityPage() {
                   body: JSON.stringify({ exceptionDate: recurringExceptionForm.exceptionDate, notes: recurringExceptionForm.notes }),
                 });
                 notify({ title: "Sesión puntual cancelada", description: `Se ha cancelado la fecha ${response.exceptionDate}`, tone: "success" });
-                setRecurringExceptionForm(initialRecurringExceptionForm);
+                setRecurringExceptionForm({ ...initialRecurringExceptionForm, reservationId: recurringExceptionForm.reservationId });
                 await load();
               } catch (err) {
                 const message = err instanceof HttpError ? err.message : "No se pudo cancelar la sesión puntual";
@@ -300,13 +336,32 @@ export function RoomAvailabilityPage() {
                 <Select value={recurringExceptionForm.reservationId} onChange={(event) => setRecurringExceptionForm({ ...recurringExceptionForm, reservationId: event.target.value })}>
                   <option value="">Selecciona una recurrencia</option>
                   {recurringReservations.filter((item) => item.active).map((item) => (
-                    <option key={item.id} value={item.id}>{item.roomName} · {["","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"][item.dayOfWeek]} · {item.startTime}-{item.endTime}</option>
+                    <option key={item.id} value={item.id}>{item.roomName} · {dayNames[item.dayOfWeek]} · {item.startTime}-{item.endTime}</option>
                   ))}
                 </Select>
               </Field>
               <Field label="Fecha a cancelar" required><Input type="date" min={minReservationDate} value={recurringExceptionForm.exceptionDate} onChange={(event) => setRecurringExceptionForm({ ...recurringExceptionForm, exceptionDate: event.target.value })} /></Field>
               <Field label="Motivo" optional><Input value={recurringExceptionForm.notes} onChange={(event) => setRecurringExceptionForm({ ...recurringExceptionForm, notes: event.target.value })} /></Field>
               <div className="flex items-end"><Button type="submit" loading={submittingRecurringException}>Cancelar solo esa sesión</Button></div>
+              {recurringExceptionForm.reservationId ? (
+                <div className="lg:col-span-4">
+                  <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-sm font-semibold text-white">Excepciones registradas para esta recurrencia</p>
+                    {selectedRecurringExceptions.length === 0 ? (
+                      <p className="mt-2 text-sm text-slate-400">Todavía no hay sesiones puntuales canceladas.</p>
+                    ) : (
+                      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                        {selectedRecurringExceptions.map((exception) => (
+                          <div key={exception.id} className="rounded-[14px] border border-white/10 bg-slate-950/40 px-3 py-2">
+                            <p className="text-sm font-medium text-white">{exception.exceptionDate}</p>
+                            <p className="mt-1 text-xs text-slate-400">{exception.notes || "Sin motivo indicado"}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
             </form>
           ) : null}
         </SectionCard>
@@ -314,20 +369,18 @@ export function RoomAvailabilityPage() {
 
       <SectionCard title="Mis reservas" description="Puedes cancelar una reserva si ya no necesitas el aula.">
         {myReservations.length === 0 ? <EmptyState text="Todavía no tienes reservas registradas." /> : (
-          <DataTable headers={["Fecha", "Aula", "Tipo", "Horario", "Notas", "Acciones"]}>
-            {myReservations.map((item) => (
-              <tr key={item.id}>
-                <td className="px-4 py-4 text-white">{item.reservationDate}</td>
-                <td className="px-4 py-4 text-slate-300">{item.roomName}</td>
-                <td className="px-4 py-4 text-slate-300">{item.type}</td>
-                <td className="px-4 py-4 text-slate-300">{item.startTime} - {item.endTime}</td>
-                <td className="px-4 py-4 text-slate-400">{item.notes || "Sin notas"}</td>
-                <td className="px-4 py-4">
-                  {!item.cancelled ? <Button variant="secondary" onClick={() => cancelReservation(item.id)}>Cancelar</Button> : <span className="text-sm text-slate-500">Cancelada</span>}
-                </td>
-              </tr>
-            ))}
-          </DataTable>
+          <FilterableDataTable
+            rows={myReservations}
+            getRowKey={(item) => item.id}
+            columns={[
+              { header: "Fecha", filterValue: (item) => item.reservationDate, render: (item) => <span className="text-white">{item.reservationDate}</span>, minWidth: 150 },
+              { header: "Aula", filterValue: (item) => item.roomName, render: (item) => item.roomName, minWidth: 180 },
+              { header: "Tipo", filterValue: (item) => item.type, render: (item) => item.type, minWidth: 150 },
+              { header: "Horario", filterValue: (item) => `${item.startTime} - ${item.endTime}`, render: (item) => `${item.startTime} - ${item.endTime}`, minWidth: 150 },
+              { header: "Notas", filterValue: (item) => item.notes || "Sin notas", render: (item) => <span className="text-slate-400">{item.notes || "Sin notas"}</span>, minWidth: 240 },
+              { header: "Acciones", filterable: false, render: (item) => !item.cancelled ? <Button variant="secondary" onClick={() => cancelReservation(item.id)}>Cancelar</Button> : <span className="text-sm text-slate-500">Cancelada</span>, minWidth: 160 },
+            ]}
+          />
         )}
       </SectionCard>
     </Page>

@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { useFeedback } from "@/components/feedback-provider";
-import { Button, ConfirmButton, DataTable, EmptyState, Field, Input, LoadingState, Message, Page, PageHeader, SearchBox, SectionCard, Select, StatusBadge, Textarea, TransitionLink, useSearch } from "@/components/ui";
+import { Button, ConfirmButton, EmptyState, Field, FilterableDataTable, Input, LoadingState, Message, Page, PageHeader, SearchBox, SectionCard, Select, StatusBadge, Textarea, TransitionLink, useSearch } from "@/components/ui";
 import { apiRequest, HttpError } from "@/lib/api";
 import { formatDate, formatDateTime, labelize } from "@/lib/format";
 import type { Garment, GarmentStatus, GarmentType } from "@/lib/types";
@@ -102,7 +102,7 @@ export function GarmentsPage() {
   return (
     <Page>
       <PageHeader title="Vestimentas" subtitle="Inventario textil con una edición rápida y detalle operativo por recurso." />
-      <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
+      <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
         <SectionCard title={editingId ? "Editar vestimenta" : "Nueva vestimenta"} description="Formulario optimizado para altas y cambios frecuentes.">
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
@@ -146,27 +146,27 @@ export function GarmentsPage() {
           ) : filtered.length === 0 ? (
             <EmptyState text="No hay vestimentas registradas todavía." />
           ) : (
-            <DataTable headers={["Identificador", "Tipo", "Estado", "Talla", "Compra", "Actualizado", "Acciones"]}>
-              {filtered.map((item) => (
-                <tr key={item.id} className="text-slate-200">
-                  <td className="px-4 py-4 font-medium text-white">{item.identifier}</td>
-                  <td className="px-4 py-4">{labelize(item.type)}</td>
-                  <td className="px-4 py-4"><StatusBadge value={item.status} /></td>
-                  <td className="px-4 py-4">{item.size}</td>
-                  <td className="px-4 py-4 text-slate-400">{formatDate(item.purchaseDate)}</td>
-                  <td className="px-4 py-4 text-slate-400">{formatDateTime(item.updatedAt)}</td>
-                  <td className="w-[220px] px-4 py-4">
-                    <div className="grid min-w-[180px] gap-2">
-                      <TransitionLink className="flex w-full min-h-10 items-center justify-center rounded-[16px] border border-white/10 bg-white/10 px-3.5 py-2 text-sm font-semibold text-white hover:bg-white/15" href={`/vestimentas/${item.id}`}>Detalle</TransitionLink>
-                      <Button variant="ghost" onClick={() => { setEditingId(item.id); setForm({ type: item.type, size: item.size, status: item.status, purchaseDate: item.purchaseDate ?? "", notes: item.notes ?? "" }); }}>
-                        Editar
-                      </Button>
-                      <ConfirmButton label="Eliminar" loading={deletingId === item.id} onConfirm={() => handleDelete(item.id)} />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </DataTable>
+            <FilterableDataTable
+              rows={filtered}
+              getRowKey={(item) => item.id}
+              columns={[
+                { header: "Identificador", filterValue: (item) => item.identifier, render: (item) => <span className="font-medium text-white">{item.identifier}</span>, minWidth: 170 },
+                { header: "Tipo", filterValue: (item) => labelize(item.type), render: (item) => labelize(item.type), minWidth: 190 },
+                { header: "Estado", filterValue: (item) => labelize(item.status), render: (item) => <StatusBadge value={item.status} />, minWidth: 160 },
+                { header: "Talla", filterValue: (item) => item.size, render: (item) => item.size, minWidth: 110 },
+                { header: "Compra", filterValue: (item) => formatDate(item.purchaseDate), render: (item) => <span className="text-slate-400">{formatDate(item.purchaseDate)}</span>, minWidth: 150 },
+                { header: "Actualizado", filterValue: (item) => formatDateTime(item.updatedAt), render: (item) => <span className="text-slate-400">{formatDateTime(item.updatedAt)}</span>, minWidth: 190 },
+                { header: "Acciones", filterable: false, render: (item) => (
+                  <div className="grid min-w-[180px] gap-2">
+                    <TransitionLink className="flex w-full min-h-10 items-center justify-center rounded-[16px] border border-white/10 bg-white/10 px-3.5 py-2 text-sm font-semibold text-white hover:bg-white/15" href={`/vestimentas/${item.id}`}>Detalle</TransitionLink>
+                    <Button variant="ghost" onClick={() => { setEditingId(item.id); setForm({ type: item.type, size: item.size, status: item.status, purchaseDate: item.purchaseDate ?? "", notes: item.notes ?? "" }); }}>
+                      Editar
+                    </Button>
+                    <ConfirmButton label="Eliminar" loading={deletingId === item.id} onConfirm={() => handleDelete(item.id)} />
+                  </div>
+                ), cellClassName: "w-[220px]", minWidth: 220 },
+              ]}
+            />
           )}
         </SectionCard>
       </div>

@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { useFeedback } from "@/components/feedback-provider";
-import { Button, ConfirmButton, DataTable, EmptyState, Field, Input, LoadingState, Message, Page, PageHeader, SearchBox, SectionCard, Select, Textarea, useSearch } from "@/components/ui";
+import { Button, ConfirmButton, EmptyState, Field, FilterableDataTable, Input, LoadingState, Message, Page, PageHeader, SearchBox, SectionCard, Select, Textarea, useSearch } from "@/components/ui";
 import { HttpError, apiRequest } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { MEMBER_INSTRUMENT_OPTIONS } from "@/lib/types";
@@ -188,7 +188,7 @@ export function MembersPage() {
         subtitle="Registro centralizado de socios, con creación de usuario automática y carga masiva desde Excel."
       />
 
-      <div className="grid gap-6 xl:grid-cols-[430px_minmax(0,1fr)]">
+      <div className="grid gap-6 xl:grid-cols-[390px_minmax(0,1fr)]">
         <SectionCard
           title={editingMemberId ? "Editar socio" : "Alta individual"}
           description={editingMemberId ? "Actualiza los datos del socio seleccionado. La contraseña no se modifica." : "La junta directiva puede registrar un socio y generar sus credenciales de acceso."}
@@ -287,7 +287,7 @@ export function MembersPage() {
         </SectionCard>
 
         <SectionCard title="Carga masiva y listado" description="Importa un Excel o consulta rápidamente el registro actual de socios.">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_260px]">
             <div className="space-y-4">
               <div className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4">
                 <p className="text-sm font-medium text-white">Importar Excel</p>
@@ -303,27 +303,25 @@ export function MembersPage() {
               {loading ? <LoadingState compact title="Cargando socios" description="Preparando el registro actual." /> : filtered.length === 0 ? (
                 <EmptyState text="No hay socios registrados todavía." />
               ) : (
-                <DataTable headers={["Nombre", "Acceso", "NIF", "Teléfono", "Instrumento", "Localidad", "Alta", "Acciones"]}>
-                  {filtered.map((item) => (
-                    <tr key={item.id}>
-                      <td className="px-4 py-4 text-white">{item.fullName}</td>
-                      <td className="px-4 py-4 text-slate-300">
-                        {[item.socio ? "Socio" : null, item.boardMember ? "Directiva" : null, item.schoolDirector ? "Dirección escuela" : null, item.teacher ? "Profesor" : null, item.student ? "Alumno" : null].filter(Boolean).join(", ") || "Sin roles"}
-                      </td>
-                      <td className="px-4 py-4 text-slate-300">{item.nif}</td>
-                      <td className="px-4 py-4 text-slate-300">{item.phone || "Sin dato"}</td>
-                      <td className="px-4 py-4 text-slate-300">{formatInstrument(item.instrument)}</td>
-                      <td className="px-4 py-4 text-slate-300">{item.city}</td>
-                      <td className="px-4 py-4 text-slate-400">{formatDateTime(item.createdAt)}</td>
-                      <td className="min-w-[220px] px-4 py-4">
-                        <div className="grid gap-2">
-                          <Button variant="secondary" onClick={() => startEdit(item)}>Editar</Button>
-                          <ConfirmButton label="Eliminar" loading={deletingMemberId === item.id} onConfirm={() => handleDelete(item.id)} />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </DataTable>
+                <FilterableDataTable
+                  rows={filtered}
+                  getRowKey={(item) => item.id}
+                  columns={[
+                    { header: "Nombre", filterValue: (item) => item.fullName, render: (item) => <span className="font-medium text-white">{item.fullName}</span>, minWidth: 220 },
+                    { header: "Acceso", filterValue: (item) => [item.socio ? "Socio" : null, item.boardMember ? "Directiva" : null, item.schoolDirector ? "Dirección escuela" : null, item.teacher ? "Profesor" : null, item.student ? "Alumno" : null].filter(Boolean).join(", ") || "Sin roles", render: (item) => [item.socio ? "Socio" : null, item.boardMember ? "Directiva" : null, item.schoolDirector ? "Dirección escuela" : null, item.teacher ? "Profesor" : null, item.student ? "Alumno" : null].filter(Boolean).join(", ") || "Sin roles", minWidth: 240 },
+                    { header: "NIF", filterValue: (item) => item.nif, render: (item) => item.nif, minWidth: 130 },
+                    { header: "Teléfono", filterValue: (item) => item.phone, render: (item) => item.phone || "Sin dato", minWidth: 140 },
+                    { header: "Instrumento", filterValue: (item) => formatInstrument(item.instrument), render: (item) => formatInstrument(item.instrument), minWidth: 170 },
+                    { header: "Localidad", filterValue: (item) => item.city, render: (item) => item.city, minWidth: 160 },
+                    { header: "Alta", filterValue: (item) => formatDateTime(item.createdAt), render: (item) => <span className="text-slate-400">{formatDateTime(item.createdAt)}</span>, minWidth: 190 },
+                    { header: "Acciones", filterable: false, render: (item) => (
+                      <div className="grid gap-2">
+                        <Button variant="secondary" onClick={() => startEdit(item)}>Editar</Button>
+                        <ConfirmButton label="Eliminar" loading={deletingMemberId === item.id} onConfirm={() => handleDelete(item.id)} />
+                      </div>
+                    ), cellClassName: "min-w-[220px]", minWidth: 220 },
+                  ]}
+                />
               )}
             </div>
 

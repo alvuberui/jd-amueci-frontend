@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { useFeedback } from "@/components/feedback-provider";
-import { Button, DataTable, EmptyState, Field, Input, LoadingState, Page, PageHeader, SectionCard, Select, Textarea } from "@/components/ui";
+import { Button, EmptyState, Field, FilterableDataTable, Input, LoadingState, Page, PageHeader, SectionCard, Select, Textarea } from "@/components/ui";
 import { HttpError, apiRequest } from "@/lib/api";
 import { QUARTER_HOUR_OPTIONS, todayIso } from "@/lib/time";
 import type { SchoolOverview } from "@/lib/types";
@@ -133,26 +133,26 @@ export function SchoolAdminPage() {
             <Button type="submit" loading={saving === "term"}>Guardar trimestre</Button>
           </form>
           {overview.academicYears.length === 0 ? <EmptyState text="Aún no hay cursos registrados." /> : (
-            <DataTable headers={["Curso", "Fechas", "Estado"]}>
-              {overview.academicYears.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-4 py-4 text-white">{item.name}</td>
-                  <td className="px-4 py-4 text-slate-300">{item.startDate} - {item.endDate}</td>
-                  <td className="px-4 py-4 text-slate-300">{item.active ? "Activo" : "Inactivo"}</td>
-                </tr>
-              ))}
-            </DataTable>
+            <FilterableDataTable
+              rows={overview.academicYears}
+              getRowKey={(item) => item.id}
+              columns={[
+                { header: "Curso", filterValue: (item) => item.name, render: (item) => <span className="text-white">{item.name}</span>, minWidth: 220 },
+                { header: "Fechas", filterValue: (item) => `${item.startDate} - ${item.endDate}`, render: (item) => `${item.startDate} - ${item.endDate}`, minWidth: 230 },
+                { header: "Estado", filterValue: (item) => item.active ? "Activo" : "Inactivo", render: (item) => item.active ? "Activo" : "Inactivo", minWidth: 150 },
+              ]}
+            />
           )}
           {overview.terms.length === 0 ? <EmptyState text="Todavía no hay trimestres cargados." /> : (
-            <DataTable headers={["Trimestre", "Curso", "Fechas"]}>
-              {overview.terms.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-4 py-4 text-white">{item.name}</td>
-                  <td className="px-4 py-4 text-slate-300">{item.academicYearName}</td>
-                  <td className="px-4 py-4 text-slate-400">{item.startDate} - {item.endDate}</td>
-                </tr>
-              ))}
-            </DataTable>
+            <FilterableDataTable
+              rows={overview.terms}
+              getRowKey={(item) => item.id}
+              columns={[
+                { header: "Trimestre", filterValue: (item) => item.name, render: (item) => <span className="text-white">{item.name}</span>, minWidth: 220 },
+                { header: "Curso", filterValue: (item) => item.academicYearName, render: (item) => item.academicYearName, minWidth: 220 },
+                { header: "Fechas", filterValue: (item) => `${item.startDate} - ${item.endDate}`, render: (item) => <span className="text-slate-400">{item.startDate} - {item.endDate}</span>, minWidth: 230 },
+              ]}
+            />
           )}
         </SectionCard>
 
@@ -317,19 +317,19 @@ export function SchoolAdminPage() {
 
       <SectionCard title="Resumen operativo" description="Visión rápida de horarios e incidencias ya cargados.">
         {overview.schedules.length === 0 ? <EmptyState text="Todavía no hay horarios definidos." /> : (
-          <DataTable headers={["Asignatura", "Tipo", "Profesor", "Alumnado", "Aula", "Día", "Horario"]}>
-            {overview.schedules.map((item) => (
-              <tr key={item.id}>
-                <td className="px-4 py-4 text-white">{item.subjectName}</td>
-                <td className="px-4 py-4 text-slate-300">{overview.subjects.find((subject) => subject.id === item.subjectId)?.subjectType === "COLECTIVA" ? "Colectiva" : "Individual"}</td>
-                <td className="px-4 py-4 text-slate-300">{item.teacherName}</td>
-                <td className="px-4 py-4 text-slate-300">{item.studentNames}</td>
-                <td className="px-4 py-4 text-slate-300">{item.roomName}</td>
-                <td className="px-4 py-4 text-slate-300">{weekDays.find((day) => day.value === item.dayOfWeek)?.label}</td>
-                <td className="px-4 py-4 text-slate-400">{item.startTime} - {item.endTime}</td>
-              </tr>
-            ))}
-          </DataTable>
+          <FilterableDataTable
+            rows={overview.schedules}
+            getRowKey={(item) => item.id}
+            columns={[
+              { header: "Asignatura", filterValue: (item) => item.subjectName, render: (item) => <span className="text-white">{item.subjectName}</span>, minWidth: 220 },
+              { header: "Tipo", filterValue: (item) => overview.subjects.find((subject) => subject.id === item.subjectId)?.subjectType === "COLECTIVA" ? "Colectiva" : "Individual", render: (item) => overview.subjects.find((subject) => subject.id === item.subjectId)?.subjectType === "COLECTIVA" ? "Colectiva" : "Individual", minWidth: 150 },
+              { header: "Profesor", filterValue: (item) => item.teacherName, render: (item) => item.teacherName, minWidth: 220 },
+              { header: "Alumnado", filterValue: (item) => item.studentNames, render: (item) => item.studentNames, minWidth: 260 },
+              { header: "Aula", filterValue: (item) => item.roomName, render: (item) => item.roomName, minWidth: 180 },
+              { header: "Día", filterValue: (item) => weekDays.find((day) => day.value === item.dayOfWeek)?.label, render: (item) => weekDays.find((day) => day.value === item.dayOfWeek)?.label, minWidth: 150 },
+              { header: "Horario", filterValue: (item) => `${item.startTime} - ${item.endTime}`, render: (item) => <span className="text-slate-400">{item.startTime} - {item.endTime}</span>, minWidth: 160 },
+            ]}
+          />
         )}
       </SectionCard>
     </Page>
