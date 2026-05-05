@@ -19,7 +19,7 @@ export function MySchoolPage() {
   useEffect(() => {
     if (!token) return;
     setLoading(true);
-    apiRequest<MySchoolAgenda>("/api/escuela/mi-agenda")
+    apiRequest<MySchoolAgenda>("/api/escuela/mi-agenda", {}, token)
       .then(setAgenda)
       .catch((err) => {
         const message = err instanceof HttpError ? err.message : "No se pudo cargar la agenda";

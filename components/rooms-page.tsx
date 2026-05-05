@@ -22,7 +22,7 @@ export function RoomsPage() {
 
   async function load() {
     if (!token) return;
-    const rooms = await apiRequest<Room[]>("/api/aulas");
+    const rooms = await apiRequest<Room[]>("/api/aulas", {}, token);
     setItems(rooms);
   }
 
@@ -49,10 +49,10 @@ export function RoomsPage() {
         active: form.active,
       };
       if (editingId) {
-        await apiRequest<Room>(`/api/aulas/${editingId}`, { method: "PUT", body: JSON.stringify(payload) });
+        await apiRequest<Room>(`/api/aulas/${editingId}`, { method: "PUT", body: JSON.stringify(payload) }, token);
         notify({ title: "Aula actualizada", tone: "success" });
       } else {
-        await apiRequest<Room>("/api/aulas", { method: "POST", body: JSON.stringify(payload) });
+        await apiRequest<Room>("/api/aulas", { method: "POST", body: JSON.stringify(payload) }, token);
         notify({ title: "Aula creada", tone: "success" });
       }
       setForm(initialForm);
@@ -70,7 +70,7 @@ export function RoomsPage() {
   async function handleDelete(roomId: number) {
     try {
       setDeletingId(roomId);
-      await apiRequest(`/api/aulas/${roomId}`, { method: "DELETE" });
+      await apiRequest(`/api/aulas/${roomId}`, { method: "DELETE" }, token);
       notify({ title: "Aula eliminada", tone: "success" });
       await load();
     } catch (err) {

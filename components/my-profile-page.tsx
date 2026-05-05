@@ -60,7 +60,7 @@ export function MyProfilePage() {
       await apiRequest("/api/auth/change-password", {
         method: "POST",
         body: JSON.stringify(passwordForm),
-      });
+      }, token);
       setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
       notify({ title: "Contraseña actualizada", description: "Vuelve a iniciar sesión con tu nueva contraseña.", tone: "success" });
       await logout();
