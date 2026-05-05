@@ -1,8 +1,6 @@
 import type { NextConfig } from "next";
   import path from "path";
 
-  const BACKEND_URL = process.env.BACKEND_URL ?? "https://amueci.ddns.net";
-
   const nextConfig: NextConfig = {
     images: {
       remotePatterns: [
@@ -18,16 +16,6 @@ import type { NextConfig } from "next";
       ],
     },
     outputFileTracingRoot: path.join(__dirname),
-    async rewrites() {
-      return [
-        {
-          source: "/api/:path*",
-          destination: `${BACKEND_URL}/api/:path*`,
-        },
-        {
-          source: "/uploads/:path*",
-          destination: `${BACKEND_URL}/uploads/:path*`,
-        },
-      ];
-    },
   };
+
+  export default nextConfig;
